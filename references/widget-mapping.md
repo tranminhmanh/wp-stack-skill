@@ -58,3 +58,48 @@ Khi convert HTML từ Claude Design / Figma / hand-coded sang Elementor.
 4. Build top-down: section → row container → card container → leaf widgets
 5. Verify get-page-structure sau mỗi section
 6. Apply responsive settings cuối cùng
+
+## Link storage location per widget
+
+Khi cần bulk-rewrite links (vd: hash anchor `#x` → root-relative `/#x` khi copy section sang page khác), mỗi widget lưu URL ở chỗ khác:
+
+| Widget | Link path trong settings | Recipe khi update |
+|---|---|---|
+| Button | `settings.link.url` | direct field update |
+| Icon List | `settings.icon_list[].link.url` | walk `icon_list` array |
+| Text Editor | `settings.editor` (HTML string) | regex `href="#x"` → `href="/#x"` |
+| Heading (with link) | `settings.title` (HTML string nếu có inline `<a>`) | regex same |
+| HTML widget | `settings.html` (HTML string) | regex same |
+| Posts Grid / Loop Grid | dynamic — link là `permalink` từ post object | KHÔNG hard-code |
+| Image (linked) | `settings.link.url` | direct |
+| Nav Menu | dùng WP menu items (`wp-admin → Menus`) — KHÔNG trong `_elementor_data` | edit menu thay vì page |
+
+Helper `absolutize_hash_links()` trong [`templates/snippets/elementor-data-update.php`](../templates/snippets/elementor-data-update.php) handle 4 widget chính (button, icon-list, text-editor, html).
+
+## HTML widget exception cho data tables / complex content
+
+Quy tắc "100% native widget" có ngoại lệ cho:
+- **Data tables** với header rows, hover states, pill labels — Elementor không có Table widget native chuẩn. HTML widget với CSS class trong kit `custom_css` là giải pháp gọn nhất.
+- **Schema JSON-LD** (`<script type="application/ld+json">`)
+- **Custom interactive markup** (pricing comparison tables, feature matrices, multi-state cards với CSS animations)
+
+Pattern:
+```html
+<!-- HTML widget content -->
+<table class="sa-transit-table">
+  <thead><tr><th>Cảng</th><th>Transit</th><th>Tần suất</th></tr></thead>
+  <tbody>
+    <tr><td>HCM-Busan</td><td>5–7 ngày</td>
+        <td><span class="sa-tt-pill sa-tt-pill--hot">2/tuần</span></td></tr>
+  </tbody>
+</table>
+```
+
+CSS trong kit `custom_css`:
+```css
+.sa-transit-table { width: 100%; border-collapse: collapse; }
+.sa-transit-table th { background: #0A2540; color: white; ... }
+.sa-tt-pill--hot { background: #E87722; color: white; ... }
+```
+
+Min-width 640px + scroll-x wrapper cho mobile.

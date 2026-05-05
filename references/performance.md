@@ -90,3 +90,41 @@ Disable nếu không cần. Hoặc Purge Everything sau deploy.
 ### Mixed content sau migrate HTTP→HTTPS
 SSL: Full (strict) + Auto HTTPS Rewrites ON + Always Use HTTPS ON.
 DB còn URL http://: dùng `wp search-replace` (xem deployment.md).
+
+## Cache invalidation playbook by host
+
+Sau MCP/PHP write op, page có thể vẫn render version cũ vì cache server-side. Workaround vary by host:
+
+| Host / cache | Working method | NOT working |
+|---|---|---|
+| WP Rocket | Settings → Cache → Clear Cache → All; hoặc REST `/wp-json/wp-rocket/v1/clear-all` | — |
+| LiteSpeed Cache (LSCWP self-hosted) | `\LiteSpeed\Purge::purge_all()` PHP; REST `X-LiteSpeed-Purge: *` | — |
+| **LSCWP trên AZDIGI shared host (LSWS server-level)** | **Plugin deactivate → 1s → reactivate** | REST purge headers, `purge_all()`, WP-CLI cache purge — server-level cache ignore WP-level signal |
+| Cloudflare | API `purge_cache` endpoint; UI Purge Everything | — |
+| Object cache (Redis) | `wp cache flush`; `redis-cli FLUSHDB` | — |
+
+**LSCWP shared host workaround** (chỉ plugin toggle hoạt động):
+```bash
+URL="$WP_SITE/wp-json/wp/v2/plugins/litespeed-cache/litespeed-cache"
+curl -u "$WP_USER:$WP_PASS" -X POST "$URL" -d '{"status":"inactive"}'
+sleep 1
+curl -u "$WP_USER:$WP_PASS" -X POST "$URL" -d '{"status":"active"}'
+```
+
+Suspected root cause: server-level LSWS cache không nghe WordPress-level purge signal — chỉ plugin lifecycle hook (deactivate) trigger được host's cache invalidation.
+
+## Pre-deploy / pre-iteration cache clear ritual
+
+Khi build/edit qua MCP rồi screenshot/test ngay:
+```bash
+# 1. Server-side
+rm -rf wp-content/cache/* wp-content/uploads/elementor/css/*
+docker exec <container> php -r 'opcache_reset();'
+
+# 2. Plugin cache (chọn theo host)
+# WP Rocket: WP-CLI rocket clean --confirm
+# LSCWP shared host: plugin toggle (xem trên)
+
+# 3. Browser
+# URL?fresh=$(date +%s%N) + Cmd+Shift+R
+```

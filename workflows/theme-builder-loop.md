@@ -130,3 +130,46 @@ Single template (chi-nhanh/<slug>/):
 - Disable lazy load CSS Elementor cho Loop Grid (tăng LCP)
 - Use object cache (Redis/Memcached) tier hosting
 - Cache page với WP Rocket
+
+## Bẫy: `set-template-conditions` MCP không trigger conditions cache
+
+MCP `set-template-conditions` ghi `_elementor_conditions` post meta đúng (`include/general` hoặc per-CPT) NHƯNG KHÔNG update option `elementor_pro_theme_builder_conditions` (cache aggregated cho tất cả templates). Symptom: `elementor_theme_do_location('header')` trả `false` → header location không render dù template có conditions đúng.
+
+**Root cause**: MCP chỉ ghi post meta, KHÔNG trigger `save_post_elementor_library` action hooks (Elementor Pro register cache regen ở đó).
+
+**Fix permanent**: mu-plugin auto-regenerate cache:
+```php
+<?php
+// wp-content/mu-plugins/elementor-conditions-cache-fix.php
+add_action('save_post_elementor_library', function ($post_id) {
+    if (function_exists('elementor_pro_load_plugin')) {
+        $manager = \ElementorPro\Modules\ThemeBuilder\Module::instance()->get_conditions_manager();
+        if (method_exists($manager, 'get_cache')) {
+            $manager->get_cache()->regenerate();
+        }
+    }
+}, 99);
+```
+
+Hoặc trigger manual sau MCP set-template-conditions:
+```bash
+docker exec <c> php -r "
+require_once '/var/www/html/wp-load.php';
+\\ElementorPro\\Modules\\ThemeBuilder\\Module::instance()->get_conditions_manager()->get_cache()->regenerate();
+"
+```
+
+## Verify-iterate-fix cycle (BẮT BUỘC)
+
+Sau mỗi MCP batch (build template, set conditions, update settings):
+1. Clear caches (xem [`references/performance.md` "Cache invalidation playbook"](../references/performance.md))
+2. `curl -sI <preview URL>` → expect 200
+3. Visit page trong browser hoặc Chrome MCP screenshot → verify visual
+4. Nếu sai → debug rendered CSS + post meta:
+   ```bash
+   wp post meta get <template_id> _elementor_conditions
+   wp option get elementor_pro_theme_builder_conditions | head -20
+   ```
+5. Adjust → re-run → re-verify
+
+Average 3–4 iterations cho complex Theme Builder layouts. KHÔNG batch nhiều template build rồi mới verify — verify ngay sau mỗi template để rollback gọn.

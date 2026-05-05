@@ -66,3 +66,67 @@ Mỗi landing page build qua MCP:
 | No schema | Rank Math Schema tab per page |
 | Sitemap không update | Tools → Database Tools → Update Sitemap |
 | Schema duplicate (Astra + Rank Math) | Disable Astra schema |
+
+## Pillar / landing page Schema 3 types pattern
+
+Maximize SERP coverage cho long-tail keywords + commercial intent. Inject 3 schema types qua HTML widget với `<script type="application/ld+json">`:
+
+### 1. BreadcrumbList
+```json
+{
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    {"@type":"ListItem", "position":1, "name":"Trang chủ", "item":"https://example.com/"},
+    {"@type":"ListItem", "position":2, "name":"Tuyến vận chuyển", "item":"https://example.com/tuyen-van-chuyen/"},
+    {"@type":"ListItem", "position":3, "name":"VN-Hàn Quốc", "item":"https://example.com/tuyen-van-chuyen/vn-han-quoc/"}
+  ]
+}
+```
+
+### 2. Service / AggregateOffer
+```json
+{
+  "@context": "https://schema.org",
+  "@type": "Service",
+  "name": "Vận chuyển container Việt Nam đi Hàn Quốc",
+  "provider": {"@type":"Organization", "name":"ShipAsia", "url":"https://shipasia.vn/"},
+  "areaServed": [{"@type":"Country","name":"Vietnam"}, {"@type":"Country","name":"South Korea"}],
+  "offers": {
+    "@type": "AggregateOffer",
+    "priceCurrency": "USD",
+    "lowPrice": "750",
+    "highPrice": "950",
+    "offerCount": "12"
+  }
+}
+```
+
+### 3. FAQPage
+Auto-generate từ Elementor Accordion widget với `faq_schema: "yes"` setting. Mỗi tab → `Question` + `Answer`. Không cần inject manual nếu accordion đã set.
+
+### Hide visual của HTML widget chứa schema
+```css
+.sa-schema-only { display: none; }
+```
+Schema được Google bot crawl trong DOM, không cần render visible.
+
+## Bulk Schema price update via regex
+
+Khi bulk update giá pillar/subpage (cước thay đổi quý), HTML widget content stored escaped trong `_elementor_data`. KHÔNG plain str_replace vì format có space variations:
+
+```php
+// Match `"lowPrice": "750"`, `"lowPrice":"750"`, `"lowPrice" : "750"`
+$updated = preg_replace_callback(
+    '/"lowPrice"\s*:\s*"(\d+)"/',
+    fn($m) => '"lowPrice": "' . $new_low . '"',
+    $html_widget_content
+);
+$updated = preg_replace_callback(
+    '/"highPrice"\s*:\s*"(\d+)"/',
+    fn($m) => '"highPrice": "' . $new_high . '"',
+    $updated
+);
+```
+
+Áp pattern tương tự cho subpages cùng pillar (5–10 cặp cảng) trong cùng script.

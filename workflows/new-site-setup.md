@@ -31,6 +31,12 @@ Settings → Discussion:
   - Disable comments default (nếu không cần)
 ```
 
+⚠️ **Language pack** (cho non-English locale): `update_option('WPLANG', 'vi')` chỉ set DB value. Phải có file `wp-content/languages/vi.mo` thì admin UI mới switch. Trigger qua admin: Settings → Site Language → Vietnamese → Save (WP auto-download 72 lang files ~2MB), hoặc WP-CLI:
+```bash
+wp language core install vi --activate
+```
+Verify: `ls wp-content/languages/vi.mo` có tồn tại.
+
 ### 2. Theme + plugins (30 phút)
 
 Cài theo thứ tự:
@@ -47,6 +53,8 @@ Cài theo thứ tự:
 11. WP Mail SMTP
 
 ⚠️ Khi upload zip msrbuilds/elementor-mcp từ GitHub source: rename folder thành `elementor-mcp/` trước khi zip lại. GitHub source zipball có hash-suffixed folder làm WP activation lỗi.
+
+⚠️ **mcp-adapter dùng release zip, KHÔNG `trunk` branch**: trunk thiếu `vendor/` (composer autoload broken) → fatal `\WP\MCP\Core\McpAdapter class missing`. Download release zip v0.5.0+ từ GitHub Releases (vendor pre-built).
 
 ### 3. Astra Customizer (30 phút)
 
@@ -131,3 +139,27 @@ Per page:
 3. Submit sitemap GSC
 4. Monitor 24h: error log, uptime, GA event
 5. Announce
+
+## Decision tree: header/footer rendering strategy
+
+Sites dùng `elementor_canvas` template (strip toàn bộ Astra header/footer) cần build header/footer riêng. 2 hướng:
+
+```
+Site dùng theme default header/footer (Astra header builder)?
+├─ YES → KHÔNG cần làm gì. Astra header/footer auto render qua wp_head + astra_footer hooks.
+│
+└─ NO (canvas template strip Astra):
+   ├─ Có Elementor Pro?
+   │  └─ YES → Theme Builder template với display conditions "Entire Site"
+   │           Header location → Pro Theme Builder
+   │           Footer location → Pro Theme Builder
+   │           1 lần build, propagate auto cho mọi page
+   │
+   └─ NO Elementor Pro:
+      ├─ Inject section 0 (header strip) + section cuối (footer) vào MỖI page
+      ├─ Helper script đồng bộ: khi update header, walk tất cả canvas pages, replace section 0
+      └─ Hash anchor `#xxx` trong header → transform thành `/#xxx` (root-relative)
+         (Xem references/pitfalls.md "Shared section across pages with hash anchors")
+```
+
+Astra free 4.13.x KHÔNG tự suppress header khi Theme Builder template active → cần mu-plugin bridge (xem references/astra-customizer.md "Astra free + Theme Builder bridge").
