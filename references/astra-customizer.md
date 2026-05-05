@@ -82,3 +82,49 @@ Header transparent on hero không tự auto detect hero section. Phải set per-
 
 ### Astra schema vs Rank Math schema duplicate
 Disable Astra schema, giữ Rank Math.
+
+## Astra Free + Elementor Theme Builder bridge
+
+Astra **Pro** có sẵn integration với Elementor Theme Builder (auto suppress Astra header/footer khi template có conditions). **Astra Free 4.13.x KHÔNG tự suppress** → Theme Builder header active nhưng Astra header vẫn render bên trên = double header.
+
+**Fix**: mu-plugin bridge (file `wp-content/mu-plugins/astra-elementor-bridge.php`):
+
+```php
+<?php
+/**
+ * Astra Free → Elementor Theme Builder bridge.
+ * Suppress Astra header/footer khi có Theme Builder template active.
+ */
+
+// 1. Suppress Astra main header
+add_filter('astra_main_header_display', '__return_false');
+
+// 2. Inject Elementor header location at body open
+add_action('wp_body_open', function () {
+    if (function_exists('elementor_theme_do_location')) {
+        elementor_theme_do_location('header');
+    }
+}, 1);
+
+// 3. Replace Astra footer with Elementor footer location
+add_action('init', function () {
+    remove_all_actions('astra_footer');
+    add_action('astra_footer', function () {
+        if (function_exists('elementor_theme_do_location')) {
+            elementor_theme_do_location('footer');
+        }
+    });
+});
+```
+
+Conditions cho mu-plugin có-điều-kiện (chỉ suppress khi Theme Builder template active):
+```php
+add_filter('astra_main_header_display', function ($display) {
+    if (function_exists('elementor_theme_do_location') && \ElementorPro\Modules\ThemeBuilder\Module::instance()->get_locations_manager()->is_location_filled('header')) {
+        return false;
+    }
+    return $display;
+});
+```
+
+⚠️ Trước khi push mu-plugin, grep source Elementor Pro version cụ thể để verify method names tồn tại — xem [`security.md` "Mu-plugin API check"](security.md).

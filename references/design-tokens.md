@@ -135,3 +135,75 @@ Trùng Elementor default — không override.
 5. Mobile spacing = 50-66% desktop spacing
 6. Mọi heading set 3 size cho 3 breakpoint
 7. Mọi padding/margin set 3 giá trị cho 3 breakpoint
+
+## Global section centering pattern (Elementor kit `custom_css`)
+
+Apply 1 lần trong kit → tất cả sections future tự center mà không cần wrap inner container:
+
+```css
+.e-con-full > .elementor-widget,
+.e-con-full > .e-con-boxed,
+.e-con-full > .e-con.e-flex,
+.e-con-full > .e-con.e-grid {
+  max-width: 1280px;
+  width: 100%;
+  margin-inline: auto;
+}
+```
+
+## Header / Footer location override (full-bleed exception)
+
+Header/footer location cần ESCAPE global centering rule trên. Override phải reset ĐỦ 3 properties (xem [pitfalls.md "CSS cascade"](pitfalls.md)):
+
+```css
+/* Header — flex layout, không boxed */
+.elementor-location-header .e-con-full > .elementor-widget,
+.elementor-location-header .e-con-full > .e-con {
+  max-width: none;
+  width: auto;
+  margin-inline: 0;
+}
+
+/* Footer — outer column full-bleed cho dark bg, inner grid đã boxed sẵn */
+.elementor-location-footer > .e-con-full {
+  max-width: none;
+  width: 100%;
+  margin-inline: 0;
+}
+```
+
+`!important` thường cần khi đối đầu Elementor's `--container-max-width` CSS variable.
+
+## B2B header sizing tokens
+
+Pattern professional (Stripe / Linear / Vercel / Notion / Figma):
+
+| Property | Value |
+|---|---|
+| Header height | 64–72px (sticky shrunk) / 88–96px (top hero) |
+| Logo height | 32–40px |
+| Padding Y | 16px |
+| Padding X | 32 desktop / 24 tablet / 16 mobile (theo design-tokens) |
+| Background | white / light navy tint |
+| Border-bottom | `1px solid rgba(navy, 0.08)` (subtle, chuyên nghiệp hơn shadow) |
+| Topbar (optional) | hotline + email + Zalo, 32–36px, `font-size: 13–14px`, hide mobile |
+
+**Logo SVG aspect ratio formula**: `target_height × aspect_ratio = width`. SVG 360×80 (= 4.5:1) + height 40px → set `width: 180px`. Image widget `height: auto` theo aspect.
+
+## Card design tokens (B2B)
+
+```
+white bg
+border-radius: 12px
+padding: 28-32px (24px mobile)
+box-shadow: 0 1px 3px rgba(navy,0.08)
+border: 1px solid rgba(navy,0.06)
+
+hover:
+  transform: translateY(-4px)
+  box-shadow: 0 16px 40px rgba(navy,0.12)
+  border-color: rgba(teal,0.3)
+  transition: 0.2s ease
+```
+
+Apply consistent cho tất cả card variants (service, testimonial, feature, route).

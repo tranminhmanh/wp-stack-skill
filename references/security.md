@@ -77,3 +77,51 @@ chown -R <php-user>:<php-user> wp-content/uploads
 6. Audit user list, xóa user lạ
 7. Audit installed plugin, xóa plugin lạ
 8. Check .htaccess, wp-config có code lạ không
+
+## VPS-level: fail2ban whitelist override
+
+Whitelist IP qua `jail.local` (KHÔNG `jail.d/whitelist.conf`) — jail-level overrides DEFAULT, ngược lại không.
+
+```ini
+# /etc/fail2ban/jail.local
+[DEFAULT]
+ignoreip = 127.0.0.1/8 ::1 <YOUR-OFFICE-IP>
+
+[sshd]
+enabled = true
+ignoreip = 127.0.0.1/8 ::1 <YOUR-OFFICE-IP>
+```
+
+`systemctl restart fail2ban`. Verify: `fail2ban-client status sshd` → `Currently banned` không có IP whitelisted.
+
+## VPS-level: iptables `-F` flush risk khi default DROP
+
+`iptables -F INPUT` KHÔNG actually flush nếu default policy là DROP — server bị lockout vĩnh viễn (không có console access = mất server).
+
+**Safe order**:
+```bash
+iptables -P INPUT ACCEPT     # 1. switch policy ACCEPT trước
+iptables -F INPUT             # 2. flush rules
+# 3. add rules mới
+iptables -P INPUT DROP        # 4. switch policy DROP cuối
+```
+
+Tự kiểm: `iptables -L INPUT -v` xem default policy trước khi flush.
+
+## Mu-plugin API check trước khi gọi method
+
+Elementor Pro API thay đổi giữa versions. Vd `\ElementorPro\Modules\ThemeBuilder\Classes\Locations_Manager::is_location_filled()` không tồn tại trong v4.0.1 → fatal error 500 site-wide khi mu-plugin load.
+
+**Pattern an toàn**:
+```bash
+# 1. Grep source code trước khi gọi
+grep -n "function is_location_filled" /path/to/elementor-pro/modules/.../classes/locations-manager.php
+# Empty result = method KHÔNG tồn tại trong version này
+
+# 2. Hoặc reflection check trong PHP
+if (method_exists('\\ElementorPro\\Modules\\ThemeBuilder\\Classes\\Locations_Manager', 'is_location_filled')) {
+    // safe to call
+}
+```
+
+Mu-plugin load tự động → deploy với API call sai = site die ngay. Phải có local PHP unit test hoặc grep source trước khi push.

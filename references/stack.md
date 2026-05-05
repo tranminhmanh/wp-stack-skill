@@ -90,3 +90,60 @@ Combo đã test, deploy production. KHÔNG thay đổi tùy hứng — đề xu�
 - WPBakery, Divi, Bricks, Beaver Builder — không trong stack
 - Theme khác Astra — chỉ Astra Free
 - Astra Pro — chồng feature với Elementor Pro
+
+## CSS architecture: mu-plugin master CSS preferred over Code Snippets
+
+Stack đề xuất dùng **1 mu-plugin master CSS** thay vì nhiều Code Snippets cho production CSS rules:
+
+| Aspect | Code Snippets plugin | Mu-plugin master CSS |
+|---|---|---|
+| Cascade priority | Default `wp_head` priority | `wp_head` priority 100 → load SAU, thắng cascade |
+| Version control | DB option (snippet content) | File trong repo, cPanel upload, git track |
+| Specificity fight | Nhiều snippets compete với nhau | 1 file = 1 cascade order |
+| Crash isolation | Snippet fatal = site 500 (xem [pitfalls "Code Snippets safety"](pitfalls.md)) | Mu-plugin nếu fatal cũng dễ rollback (rename file) |
+| Recovery | Phải vào DB disable | SSH/Fileman rename `.php` → `.php.off` |
+
+**Khi nào Code Snippets vẫn OK**:
+- JS hooks 1-vài dòng (analytics event, scroll tracker)
+- WP filter/action lẻ tẻ (vd: tweak excerpt length)
+- Logic admin-only single-use (`scope=admin`, `active=-1`)
+
+**Khi nào BẮT BUỘC mu-plugin**:
+- CSS overrides cho production layout
+- Elementor API calls (`files_manager`, `frontend->get_settings`, …)
+- Code chạy ở `priority 1` hoặc trước Elementor init
+- Anything mà nếu hỏng phải khôi phục site qua [`templates/snippets/wp-fix.php`](../templates/snippets/wp-fix.php)
+
+## Compatibility: WAE plugin (`wordpress-wae`) cần mu-plugin show-in-rest fix
+
+Nếu site dùng `wordpress-wae` plugin (89 abilities cho posts/pages/products/media), abilities mặc định `meta['show_in_rest'] = false` → REST controller `WP_REST_Abilities_V1_List_Controller::get_items()` filter theo meta này → chỉ 2 core abilities visible qua API.
+
+**Fix**: deploy mu-plugin `wp-content/mu-plugins/abilities-show-in-rest.php`:
+
+```php
+<?php
+/**
+ * WAE compatibility — flip show_in_rest=true cho mcp-wp/* và core/* abilities.
+ * Chạy ở hook wp_abilities_api_init priority 999 (sau khi WAE register).
+ */
+add_action('wp_abilities_api_init', function () {
+    if (!class_exists('\\WP\\Abilities\\Abilities_Registry')) return;
+    $registry = \WP\Abilities\Abilities_Registry::get_instance();
+    $reflection = new ReflectionClass($registry);
+    $abilities_prop = $reflection->getProperty('abilities');
+    $abilities_prop->setAccessible(true);
+    $abilities = $abilities_prop->getValue($registry);
+
+    foreach ($abilities as $name => $ability) {
+        if (str_starts_with($name, 'mcp-wp/') || str_starts_with($name, 'core/')) {
+            $meta_prop = (new ReflectionClass($ability))->getProperty('meta');
+            $meta_prop->setAccessible(true);
+            $meta = $meta_prop->getValue($ability) ?: [];
+            $meta['show_in_rest'] = true;
+            $meta_prop->setValue($ability, $meta);
+        }
+    }
+}, 999);
+```
+
+Verify: `curl /wp-json/wp/v2/abilities | jq '.abilities | length'` — expect 80+ thay vì 2.
