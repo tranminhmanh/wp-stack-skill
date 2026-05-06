@@ -288,3 +288,67 @@ Container settings `shape_divider_bottom`, `shape_divider_bottom_color`, `shape_
 ### Counter widget swap pattern
 
 Khi clone page và cần thay counter values, KHÔNG str_replace `ending_number` (số không unique). Walk JSON, match by `widgetType === 'counter'` + original `settings.title`. Helper `update_counter_by_title()` trong [`templates/snippets/elementor-data-update.php`](../templates/snippets/elementor-data-update.php).
+
+## Settings cần post-CSS regen mới apply
+
+Set qua MCP/REST → DB lưu đúng, nhưng live render KHÔNG có inline style/CSS rule tương ứng. Page A cùng setting render đúng (vì created via Editor → CSS regen tự động). Page B sau MCP push — không.
+
+**Affected settings** (list cập nhật theo gặp phải):
+- `title_color` trên heading widget
+- `typography_*` các properties (`font_size`, `font_weight`, `letter_spacing`, ...)
+- `_padding`, `_margin` với responsive units
+- Custom column width (`_inline_size`)
+
+**Workarounds (chọn 1)**:
+1. **Mu-plugin CSS rule** target widget class wrapper (`.cta-heading .elementor-heading-title { color: ...!important; }`) — bypass post-CSS hoàn toàn, work ngay không cần regen. **Reliable cho automation**.
+2. **Force Elementor post-CSS regen** PHP one-shot:
+   ```php
+   \Elementor\Core\Files\CSS\Post::create($post_id)->update();
+   ```
+3. Visit page trong Editor & save manual (không scale).
+
+## Column width: `_column_size` ≠ width enforcement
+
+Set `_column_size: 63` qua MCP/REST → DB lưu đúng. Nhưng rendered DOM column width chỉ ~51% (`flex: 0 1 auto`, `flexBasis: auto`, `width: auto`). Computed width theo content, không 63%.
+
+**Root cause**: Elementor chỉ generate `width: X%` rule khi `_inline_size` được set. `_column_size` chỉ là fallback cho old non-flex column layout.
+
+**Fix (chọn 1)**:
+1. Set thêm `_inline_size: 63` (numeric) → Elementor sinh inline `width: 63%` style.
+2. **Recommended**: CSS flex override:
+   ```css
+   .header-nav { flex: 1 1 0 !important; }  /* grow fill remaining */
+   .header-logo, .header-cta { flex: 0 0 auto !important; }  /* shrink to content */
+   ```
+   Robust hơn vì content-driven sizing — logo/CTA co theo text, nav grow fill space.
+
+Khi build new layout via MCP, **verify width thực tế trong browser** không tin DB value.
+
+## Class propagation across nested sections
+
+Khi style relies on parent class (vd `.dark` cho dark bg sections), apply lên CẢ nested sections vì `:not()` chains kiểm tra closest ancestor section, KHÔNG kiểm tra outer ancestor.
+
+Elementor CTA structure thường:
+```
+outer-section.dark
+  → column
+    → inner-section (no class)
+      → column
+        → widget
+```
+
+Heading's `.closest('section')` là inner-section KHÔNG có `.dark` → `:not([class~="dark"])` vẫn match → vẫn ăn rule mặc định.
+
+**Fix**: walk tree, propagate `.dark` class xuống mọi section bên trong outer-dark:
+```php
+function propagate_class_to_nested_sections(array &$elements, string $cls): void {
+    foreach ($elements as &$el) {
+        if (($el['elType'] ?? '') === 'section') {
+            $el['settings']['css_classes'] = trim(($el['settings']['css_classes'] ?? '') . ' ' . $cls);
+        }
+        if (!empty($el['elements'])) {
+            propagate_class_to_nested_sections($el['elements'], $cls);
+        }
+    }
+}
+```

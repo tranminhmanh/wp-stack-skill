@@ -152,3 +152,47 @@ iframe.contentWindow.innerWidth  // = 371 (correct mobile viewport)
 ```
 
 Ưu điểm: chính xác viewport, click hamburger và verify drawer interaction trong iframe context.
+
+## Container budget for nav decorations
+
+Khi thêm icons/badges/decorations vào nav (mask-image SVG, status pills, count badges), tính TỔNG width budget TRƯỚC khi add:
+
+```
+container_width = sum(item_widths) + sum(gaps) + decorations
+nav_total_width = N × (text_width + icon_width + gap) - last_gap
+```
+
+**Bug pattern**: Round 4 polish thêm SVG line icons (12-14px) before nav text qua `mask-image` data URI. Mỗi link width tăng ~22px (icon + gap). Total 5 links × 22px = 110px overflow → nav wraps to 2 rows. Container header-nav column width fixed ~440px không grow.
+
+**Fix (chọn 1)**:
+1. **Drop decorations** (đơn giản nhất nếu không essential)
+2. **Make container flexible**: `flex: 1 1 0` để grow theo content. Xem [`elementor-mcp.md` "Column width: `_column_size` ≠ width enforcement"](elementor-mcp.md).
+3. **Hover-only icons**: show icon ONLY khi `:hover` — avoid normal-state overflow:
+   ```css
+   .nav-item .icon { width: 0; opacity: 0; transition: 0.2s; }
+   .nav-item:hover .icon { width: 14px; opacity: 1; margin-right: 6px; }
+   ```
+
+Rule: container fixed-width có cap số chars + decorations. Test mọi breakpoint sau khi add decorations.
+
+## Scroll height optimization ROI
+
+Khi audit homepage scroll height ~9800px và muốn giảm, tránh false-economy "compress section padding".
+
+**Measured ROI** (homepage 9800px audit):
+- Section outer padding 80→64px × 3 sections = expected 96px savings
+- **Actual savings: ~80px = 0.8% page height**
+- Visually section "tighter" nhưng KHÔNG dramatic giảm scroll
+
+**Effective optimizations** (target 20%+ giảm):
+1. **Compress INNER content** (bigger ROI):
+   - Text-editor `margin-bottom` reduce
+   - Heading `line-height` tighten (1.2 → 1.1)
+   - Image `max-height` clamp
+2. **Convert vertical → horizontal** layout:
+   - 5 stacked icon-boxes → 5-col grid (saves ~400-600px)
+   - Vertical timeline → horizontal scroll-x
+3. **Defer/lazy-load below-fold sections** (intersection observer)
+4. **Audit content essential vs decorative** — remove sections không pull weight
+
+**Rule**: outer padding tweak hiệu quả ~5-10% page reduction max. Cần optimize INNER content + layout strategy nếu muốn giảm 20%+. **Measure before & after** để validate ROI — đừng deploy "có cảm giác chặt hơn" mà không số liệu.

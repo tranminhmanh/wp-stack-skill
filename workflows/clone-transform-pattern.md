@@ -109,6 +109,67 @@ Visit page trên browser, screenshot:
 
 Time saved: ~73–95% sau khi pattern stable.
 
+## Pattern matures only after 2-3 iterations
+
+Build #1 (golden master) thường có 3-5 micro-bugs detect khi iterate sang Build #2-3:
+- Missing `_wp_page_template = 'elementor_canvas'` → Astra entry-title H1 duplicate
+- HTML escaping inconsistency cho Vietnamese chars
+- Schema JSON-LD chưa có FAQPage trong v1
+- Counter ending_number wrong format (float vs int)
+- Hash anchor links không absolutize
+
+Plan **time cho audit + sync ngược** vào pattern. Tracking:
+- Build #1: ~60 phút manual + audit + fix bugs
+- Build #2: inherit clean pattern + 3-5 mới phát hiện
+- Build #3: pattern stable (~80% bugs fixed)
+- Build #4+: marginal cost ~25 phút/page
+
+Sau audit, **update helpers trong `templates/snippets/elementor-data-update.php`** với fixes — pattern chỉ matures khi feedback loop closed.
+
+## Alternative: build-from-scratch with generic helpers
+
+Khi content structure khác hẳn template (vd: blog long-form vs pillar landing page), clone+transform không hiệu quả. Build từ scratch với section helper functions hiệu quả hơn:
+
+```php
+function gen_id(): string { return substr(bin2hex(random_bytes(4)), 0, 7); }
+
+function build_hero_section(array $cfg): array { /* return Elementor section structure */ }
+function build_counter_strip(array $counters): array { /* 4 counter cards */ }
+function build_section_heading(string $title, string $subtitle): array { ... }
+function build_cta_section(array $cfg): array { /* gradient navy + buttons */ }
+function build_html_section(string $html, int $padding_top, int $padding_bottom, string $bg): array { ... }
+function build_schema_section(array $schema): array { /* JSON-LD HTML widget */ }
+
+function build_blog_data(array $cfg): array {
+    return [
+        build_hero_section($cfg),
+        build_counter_strip($cfg['stats']),
+        build_section_heading($cfg['intro_title'], $cfg['intro_subtitle']),
+        build_html_section($cfg['intro_html'], 64, 64, 'white'),
+        // ...
+        build_cta_section($cfg),
+        build_schema_section($cfg['schema']),
+    ];
+}
+
+// Loop N configs → N pages built trong vài giây
+foreach ($configs as $cfg) {
+    $data = build_blog_data($cfg);
+    create_elementor_page([
+        'title' => $cfg['title'],
+        'slug' => $cfg['slug'],
+        'data' => $data,
+    ]);
+}
+```
+
+**Performance**: Build 5 blogs trong ~3 giây vs ~7.5 giờ manual MCP — saving 99%.
+
+**Khi nào prefer over clone+transform**:
+- Content structure khác hẳn (blog vs pillar)
+- Section count/order varies per page
+- Có thể decompose thành reusable section helpers (≥80% page = helpers, <20% per-page custom)
+
 ## Bẫy thường gặp
 
 ### 1. Vietnamese không match khi str_replace plain string
@@ -143,6 +204,28 @@ HTML widget content stored escaped trong `_elementor_data`. Match `"lowPrice":\s
 Outer `"..."` của ssh interferes với inner `<<'PHPEOF'` heredoc backslash escaping. Triple-escaped backslashes `\\\\\\` become unpredictable.
 
 **Fix**: `Write` PHP file local → `scp` to remote → `docker cp` into container → `docker exec php /tmp/...`. Avoid all shell escape layering.
+
+### 8. Walk-replace HTML widget trap (multi items in 1 widget)
+
+Khi N items được encode trong **1 HTML widget duy nhất** (grid layout, list inline) — vd 5 cards inline trong 1 `<div class="grid">5 cards</div>` — naive `stripos` first-match replace ENTIRE widget content → mất N-1 items.
+
+**Detection technique**: So sánh `strlen($elementor_data)` before/after — drop đột ngột (vd 17KB→13KB cho 5→1 cards) = bug này.
+
+**Fix**: Detect target widget bằng marker class + REBUILD whole widget với N items:
+```php
+function walk_replace_grid(&$elements, &$found, $new_full_grid_html) {
+    foreach ($elements as &$el) {
+        if (($el['widgetType'] ?? '') === 'html'
+            && strpos($el['settings']['html'] ?? '', 'sa-blog-coming-grid') !== false) {
+            $el['settings']['html'] = $new_full_grid_html;
+            $found++;
+            return;
+        }
+    }
+}
+```
+
+Xem [`pitfalls.md` "Walk-replace HTML widget trap"](../references/pitfalls.md) cho lessons đầy đủ.
 
 ## Verify-iterate-fix cycle
 
