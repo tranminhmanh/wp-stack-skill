@@ -103,3 +103,32 @@ CSS trong kit `custom_css`:
 ```
 
 Min-width 640px + scroll-x wrapper cho mobile.
+
+## Refactor strategy: preserve class names
+
+Khi convert raw HTML widget (`<div class="commit-card">...</div>`) sang native widgets (heading + text-editor + ...), risk lớn nhất là **mất styling** vì mu-plugin/kit CSS targets class cụ thể (`.commit-card`, `.pain-card`, `.price-card`, `.icon-circle`, ...). Rebuild với widget defaults = phải viết lại toàn bộ CSS.
+
+### Pattern preservation: KEEP class names, map to Elementor element type
+
+| Legacy HTML class | Elementor element to attach | Setting field |
+|---|---|---|
+| `<section class="commit-grid">` (outer container) | Inner section / container | `settings.css_classes` |
+| `<div class="commit-card">` (column) | Column / nested container | `settings.css_classes` |
+| `<span class="icon-circle">` (widget wrapper) | Widget wrapper | `_css_classes` (widget-level) |
+| `<span>78<small>k</small></span>` (special markup) | Text-editor widget với raw HTML | `settings.editor` + `_css_classes` |
+
+### Order of operations khi refactor
+
+1. **Identify CSS class hierarchy** trong legacy HTML (đọc mu-plugin CSS xem class nào style cái gì)
+2. **Map class → Elementor element type** theo bảng trên
+3. **Build top-down**: outer container với class → column với class → widget với `_css_classes`
+4. **DO NOT rename classes** — sẽ phải viết lại toàn bộ CSS
+
+### Special case: complex inline markup
+
+`<span>78<small>k</small></span>` không thể qua heading widget (escape HTML). Dùng:
+- **text-editor widget** với raw HTML
+- `_css_classes` cho wrapper class (vd `'price'`)
+- Existing CSS `.price small { font-size: 0.5em; }` continues working
+
+Tradeoff: text-editor cho phép raw HTML, heading widget escape — pick widget theo nhu cầu inline markup.

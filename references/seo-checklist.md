@@ -130,3 +130,125 @@ $updated = preg_replace_callback(
 ```
 
 Áp pattern tương tự cho subpages cùng pillar (5–10 cặp cảng) trong cùng script.
+
+## Bulk Rank Math meta via post_meta (no GUI)
+
+Rank Math stores all SEO meta as `post_meta` keys. Bulk-set qua PHP instant, không navigate GUI 52 lần:
+
+| Meta key | Purpose | Override |
+|---|---|---|
+| `rank_math_title` | `<title>` tag | Override post_title |
+| `rank_math_description` | meta description | — |
+| `rank_math_focus_keyword` | primary keyword cho on-page analysis | — |
+| `rank_math_canonical_url` | canonical URL | Default = self |
+| `rank_math_robots` | array `['index', 'follow', 'noarchive', ...]` | — |
+| `rank_math_facebook_image_id` | OG attachment ID | Required cho og:image render |
+| `rank_math_facebook_image` | OG image URL | Set cùng `_id` |
+| `rank_math_twitter_image_id` | Twitter card image ID | — |
+| `rank_math_twitter_image` | Twitter card image URL | — |
+
+```php
+// Bulk-set across N pages
+foreach ($pages as $page) {
+    update_post_meta($page->ID, 'rank_math_title', $page->seo_title);
+    update_post_meta($page->ID, 'rank_math_description', $page->seo_desc);
+    update_post_meta($page->ID, 'rank_math_focus_keyword', $page->keyword);
+}
+```
+
+## Inject Schema markup vào `_elementor_data` via PHP
+
+Khi cần add schema (Service, BlogPosting, FAQPage) cho pages đã build qua MCP:
+
+```php
+$schema_html = '<script type="application/ld+json">'
+             . json_encode($schema, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
+             . '</script>';
+
+$new_widget = [
+    'id' => substr(md5(uniqid('', true)), 0, 7),
+    'elType' => 'container',
+    'settings' => ['content_width' => 'boxed'],
+    'elements' => [[
+        'id' => substr(md5(uniqid('', true)), 0, 7),
+        'elType' => 'widget',
+        'widgetType' => 'html',
+        'settings' => ['html' => $schema_html],
+    ]],
+];
+
+$data = json_decode(get_post_meta($id, '_elementor_data', true), true);
+$data[] = $new_widget;  // Append at end
+update_post_meta($id, '_elementor_data', wp_slash(json_encode($data, JSON_UNESCAPED_UNICODE)));
+```
+
+CSS hide: `.sa-schema-only { display: none; }` cho widget container — Google bot crawl trong DOM, không cần render visible.
+
+## Vietnamese title length: 40-55 chars
+
+Tiếng Việt UTF-8 takes 1.5-2 bytes per char (đ, ă, ê, ơ...), nhưng Google SERP đếm by **char visual width**. Title `Vận chuyển container Việt Nam → Trung Đông (UAE/Saudi/Qatar) - ShipAsia` = 70+ chars → SERP cắt giữa.
+
+**Target**: 40-55 chars Vietnamese (vs 50-60 English).
+
+Format chuẩn: `[Keyword chính] — [USP highlight] | Brand`
+
+Vd:
+- ✅ "Vận chuyển VN-Hàn Quốc — Cước cạnh tranh | ShipAsia" (49 chars)
+- ❌ "Vận chuyển container Việt Nam đi Hàn Quốc — Báo giá miễn phí trong 4 giờ" (74 chars, SERP cắt)
+
+## Schema OfferCatalog cho structured services
+
+Khi page hub có nhiều "items" thuộc cùng main service (vd 8 routes của 1 vận chuyển service, 5 dịch vụ sub của hub), schema flat list kém hơn `OfferCatalog`:
+
+**Flat (kém)**:
+```json
+[
+  {"@type":"Service", "name":"Service A", ...},
+  {"@type":"Service", "name":"Service B", ...}
+]
+```
+
+**OfferCatalog (tốt)** — Google hiểu structure "N items của 1 main service":
+```json
+{
+  "@type": "Service",
+  "name": "Main Service",
+  "areaServed": ["Country1", "Country2"],
+  "hasOfferCatalog": {
+    "@type": "OfferCatalog",
+    "name": "N sub-services",
+    "itemListElement": [
+      {
+        "@type": "Offer",
+        "itemOffered": {"@type": "Service", "name": "Sub A", "url": "..."}
+      }
+    ]
+  }
+}
+```
+
+Eligible cho **Sitelinks Search Box** + structured product/service rich result trong SERP.
+
+## OG image attachment integration (Rank Math)
+
+⚠️ Rank Math **REQUIRE attachment ID** (không chỉ URL) để render `og:image` properly.
+
+```php
+// Wrong: only URL → og:image meta không render
+update_post_meta($post_id, 'rank_math_facebook_image', 'https://example.com/og.png');
+
+// Right: attachment ID + URL both
+$attach_id = wp_insert_attachment([...], $file_path);
+wp_generate_attachment_metadata($attach_id, $file_path);
+update_post_meta($attach_id, '_wp_attachment_image_alt', 'Descriptive alt');
+
+update_post_meta($post_id, 'rank_math_facebook_image_id', $attach_id);
+update_post_meta($post_id, 'rank_math_facebook_image', wp_get_attachment_url($attach_id));
+update_post_meta($post_id, 'rank_math_twitter_image_id', $attach_id);
+update_post_meta($post_id, 'rank_math_twitter_image', wp_get_attachment_url($attach_id));
+set_post_thumbnail($post_id, $attach_id);  // Double coverage fallback
+```
+
+Result frontend: `og:image` URL + `og:image:secure_url` HTTPS + `og:image:width/height` (Rank Math auto-detect from attachment metadata) + `og:image:alt` từ `_wp_attachment_image_alt` + `og:image:type` + `twitter:card summary_large_image`.
+
+Full workflow: [`workflows/og-image-generation.md`](../workflows/og-image-generation.md). PHP recipe: [`templates/snippets/og-image-generator.php`](../templates/snippets/og-image-generator.php).

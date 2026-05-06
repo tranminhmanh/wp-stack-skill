@@ -337,3 +337,171 @@ Section header/footer dùng `#san-pham`, `#bang-gia` — anchor tới section tr
 **Fix**: transform `#xxx` → `/#xxx` (root-relative). Apply 4 nơi: button `settings.link.url`, icon-list items, text-editor/HTML inline `href` (regex `href="#x"` → `href="/#x"`).
 
 Helper `absolutize_hash_links()` trong [`elementor-data-update.php`](../templates/snippets/elementor-data-update.php).
+
+## CRITICAL: WP option overrides Elementor render
+
+### `page_for_posts` overrides Elementor render
+
+Khi WP có `page_for_posts` set (Settings → Reading → Posts page = This Page), WP **override** Elementor render: page render bằng "Posts archive template" (`home.php` hoặc `index.php`) thay vì `_elementor_data`.
+
+**Triệu chứng**: Build /blog/ Elementor page (post 11), data 17KB stored OK, edit_mode=builder, post_status=publish. Frontend không render Elementor classes — `.sa-blog-categories` returns null trong DOM.
+
+**Detection**:
+```php
+$page_for_posts = get_option('page_for_posts');
+$show_on_front = get_option('show_on_front');
+if ($show_on_front === 'page' && $page_for_posts == $post_id) {
+    // Page bị override
+}
+```
+
+**Fix**:
+```php
+update_option('page_for_posts', 0);  // Unset
+// Hoặc move /blog/ slug ra chỗ khác
+```
+
+**Pattern preventive**: Khi build "blog hub", "static-front", hoặc trang tên đặc biệt, check WP Settings → Reading TRƯỚC. Các option có thể ẩn override page render mà không có lỗi rõ ràng:
+- `page_for_posts` (Posts page)
+- `page_on_front` (Static homepage)
+- `default_category` (default post category override)
+
+## WordPress nav menu pitfalls
+
+### `nav_menu_item.post_title` SEPARATE từ linked page title
+
+WP nav menu items (`post_type=nav_menu_item`) có **`post_title` RIÊNG** (gọi là "Navigation Label") tách biệt với `post_title` của page được link.
+
+**Triệu chứng**: Update `post_title` của 5 trang menu cho SEO-friendly long titles ("Liên hệ ShipAsia — Tư vấn miễn phí trong 4 giờ" v.v.) → header navigation render full long titles → nav row tràn dòng.
+
+**Root cause**: Khi menu item tạo lần đầu, WP copy page title làm default Navigation Label. Sau đó page title đổi → nav menu KHÔNG tự sync. Nhưng nếu menu item bị "auto-update" (reset menu, plugin migration, save quirk) → bị overwrite lại.
+
+**Fix**: Update `wp_posts.post_title` cho menu items trực tiếp:
+```php
+$menu_items = wp_get_nav_menu_items('menu-chinh');
+$labels = ['lien-he' => 'Liên hệ', 've-chung-toi' => 'Về chúng tôi'];
+
+foreach ($menu_items as $item) {
+    $linked_id = get_post_meta($item->ID, '_menu_item_object_id', true);
+    $linked_post = get_post($linked_id);
+    if (isset($labels[$linked_post->post_name])) {
+        wp_update_post([
+            'ID' => $item->ID,
+            'post_title' => $labels[$linked_post->post_name],
+        ]);
+    }
+}
+```
+
+**Best practice**: SEO long title cho `<title>` tag + breadcrumb, short clean label cho nav UI. Khi update SEO long titles, LUÔN check + update nav menu labels riêng.
+
+**Menu item postmeta keys** (reference):
+- `_menu_item_object_id` — ID của post/page/term được link
+- `_menu_item_object` — type: `'page'`, `'post'`, `'category'`, `'custom'`
+- `_menu_item_type` — `'post_type'` / `'taxonomy'` / `'custom'`
+- `_menu_item_url` — URL nếu type='custom'
+- `_menu_item_target` — `'_blank'` hoặc empty
+- `_menu_item_classes` — array of CSS classes
+- `_menu_item_menu_item_parent` — parent menu item ID (cho submenu)
+
+## More CSS Cascade pitfalls
+
+### CSS attribute selector: `[class*=""]` substring vs `[class~=""]` word match
+
+`[class*="-dark"]` substring match có thể match cả `not-dark` hoặc `xx-dark-yy` — false positive.
+
+**Triệu chứng**: Snippet legacy có rule `:not([class*="-dark"])` để exclude dark sections — class chuẩn của design system là `dark` (không dash). Khi inject section `class="dark"`, legacy rule vẫn match → heading navy invisible trên bg navy.
+
+**Fix**: Dùng `[class~="dark"]` word match (exact word, space-separated) cho exact class:
+```css
+/* WRONG: matches "not-dark", "darkness", etc. */
+:not([class*="dark"]) { color: navy !important; }
+
+/* RIGHT: matches only standalone class "dark" */
+:not([class~="dark"]) { color: navy !important; }
+```
+
+**Bonus pitfall**: Class propagation across nested sections. Elementor structure thường: `outer-section.dark → column → inner-section (no class) → column → widget`. Heading's `.closest('section')` là inner-section KHÔNG có `.dark` → `:not([class~="dark"])` vẫn match → vẫn ăn navy.
+
+**Fix**: walk tree, propagate `.dark` class xuống mọi nested section bên trong outer-dark.
+
+## Astra theme pitfalls
+
+### Astra `entry-title` H1 duplicate Elementor H1
+
+**Triệu chứng**: Pages có 2 H1 trên rendered HTML:
+```html
+<h1 class="entry-title" itemprop="headline">[page title]</h1>      ← Astra theme inject
+<h1 class="elementor-heading-title">[heading widget]</h1>           ← Elementor render
+```
+
+**Root cause**: Pages built mà không set `_wp_page_template = 'elementor_canvas'` → fallback to Astra `single.php` template → render entry-title H1 trước Elementor data.
+
+**Fix**: `update_post_meta($id, '_wp_page_template', 'elementor_canvas')` → Astra skip render. Trong mọi PHP build script, MUST include:
+```php
+update_post_meta($post_id, '_wp_page_template', 'elementor_canvas');
+update_post_meta($post_id, '_elementor_edit_mode', 'builder');
+update_post_meta($post_id, '_elementor_template_type', 'wp-page');
+```
+
+Helper `create_elementor_page()` trong [`templates/snippets/elementor-data-update.php`](../templates/snippets/elementor-data-update.php) đã set đầy đủ.
+
+## Internal link integrity pitfalls
+
+### Slug freeze early + post-build CI verify all internal links
+
+**Triệu chứng**: Build homepage Tuần 2 dùng URL placeholder `viet-nam-X` (descriptive). Tuần 3+ build pillars với slug simplified `vn-X`. Homepage URLs KHÔNG được update đồng bộ → 8 dead pillar links 404 → 6 tháng leak link equity.
+
+**Impact**: Trang chủ là page có link equity cao nhất site. Leak toàn bộ power qua URLs chết → crawler waste budget on 404s, link juice bay vào hư không.
+
+**Fix**: Walk Elementor data str_replace per-link cho all dead URL pairs:
+```php
+foreach ($el['settings'] as &$setting) {
+    foreach (['html', 'editor', 'title'] as $field) { /* str_replace */ }
+}
+if (isset($settings['link']['url']))    { /* str_replace */ }
+if (isset($settings['link_to']['url'])) { /* str_replace */ }
+```
+
+**Lessons CRITICAL**:
+1. **CI check post-build**: viết script verify ALL internal links return 200, run sau mỗi build. Xem [`workflows/seo-audit.md`](../workflows/seo-audit.md) "Always verify HTTP code".
+2. **Slug freeze early**: quyết định slug convention TRƯỚC khi build trang nào → pages khác inherit cùng pattern.
+3. **Audit script phải verify HTTP code của internal links**, không chỉ count.
+
+## PHP bulk-update pitfalls
+
+### Walk-replace HTML widget trap (multi items in 1 widget)
+
+**Triệu chứng**: Blog hub `_elementor_data` 17KB → drop 13KB (mất 4KB) sau khi chạy update script → kết quả chỉ còn 1 card hiển thị thay vì 5.
+
+**Root cause**: 5 cards encoded trong **1 HTML widget duy nhất** (Elementor build chỉ tạo 1 widget chứa full grid `<div class="grid">5 cards inline</div>`). Function walk_replace dùng `stripos` first-match:
+```php
+foreach ($replacements as $key => $rep) {
+    if (stripos($h, $key) !== false) {
+        $el['settings']['html'] = $new_card;  // ← REPLACES WHOLE WIDGET với 1 card
+        break;
+    }
+}
+```
+Match đầu tiên replace ENTIRE widget content → mất 4 cards còn lại.
+
+**Fix**: Detect target widget bằng marker class + REBUILD whole widget với N items:
+```php
+function walk_replace_grid(&$elements, &$found, $new_full_grid_html) {
+    foreach ($elements as &$el) {
+        if (($el['widgetType'] ?? '') === 'html'
+            && strpos($el['settings']['html'] ?? '', 'sa-blog-coming-grid') !== false) {
+            $el['settings']['html'] = $new_full_grid_html;  // Full new grid
+            $found++;
+            return;
+        }
+    }
+}
+```
+
+**Detection technique**: So sánh `strlen($elementor_data)` before/after — drop đột ngột (17KB→13KB cho 5→1 cards) là dấu hiệu bug này.
+
+**Lesson**: Khi multiple items được encode trong 1 HTML widget (grid layout, list inline...), MUST:
+- Rebuild whole widget thay vì targeted replace per item
+- Detect target widget bằng marker class (existing class) tồn tại + missing new marker
+- Always check Elementor data size before/after để detect data loss bugs
