@@ -352,3 +352,94 @@ function propagate_class_to_nested_sections(array &$elements, string $cls): void
     }
 }
 ```
+
+## `update_page_from_file` không regen `post_content`
+
+Push file JSON đã sửa qua `mcp__elementor__update_page_from_file` → REST `/wp/v2/pages/N?context=edit` thấy `_elementor_data` mới. NHƯNG `.content.rendered` (cột `post_content`) vẫn HTML cũ → frontend render từ `post_content` nên user không thấy thay đổi.
+
+**Root cause**: `update_page_*` MCP chỉ update meta `_elementor_data` qua REST. Không trigger Elementor save handler → không regen HTML → không xoá LiteSpeed page cache.
+
+**Workflow chuẩn cho image bulk swap / data update**:
+1. Edit JSON local
+2. `mcp__elementor__update_page_from_file` push data
+3. **`mcp_batch_update`** (hoặc `update_widget` / `update_element`) cùng settings vừa push → đi qua Elementor save pipeline → re-render `post_content` + invalidate LiteSpeed cache
+
+→ 2-step pattern bắt buộc cho mọi bulk update qua MCP.
+
+## Image widget `update-widget` cần đầy đủ object
+
+Khi update image widget, KHÔNG đủ chỉ set `id`:
+
+```json
+// WRONG — Elementor cache URL trong _elementor_data, không re-resolve từ ID
+{
+  "image": { "id": 3872 }
+}
+
+// RIGHT — full object
+{
+  "image": {
+    "id": 3872,
+    "url": "https://example.com/wp-content/uploads/2026/05/hero.jpg",
+    "alt": "VN alt text cho SEO",
+    "source": "library",
+    "size": ""
+  }
+}
+```
+
+Sau update, Elementor frontend tự generate thumb tại `wp-content/uploads/elementor/thumbs/[basename]-rn[hash].jpg` (tên xáo trộn để bypass CDN cache cũ).
+
+## `add-form` không set `custom_id` — manual patch sau build
+
+MCP `add-form` build form fields nhưng KHÔNG enforce `custom_id` → silent fail submission. Xem [`pitfalls.md` "CRITICAL: Pro Form silent fail"](pitfalls.md) cho full detection + fix.
+
+**Quy tắc**: sau mọi `add-form`, manual patch fields với `custom_id` semantic (`name`, `email`, `phone`, `route`, ...). KHÔNG dùng `field_1`/`field_2` mặc định.
+
+## WP MCP Abilities API — input wrapper format
+
+Tất cả MCP servers (mcp-wp, elementor-mcp, custom WAE abilities) chia sẻ Abilities API REST endpoint pattern:
+
+### Read-only abilities (GET method)
+
+URL syntax: `?input[key]=value` (PHP-style nested array, URL-encoded):
+```
+GET /wp-json/wp-abilities/v1/abilities/elementor-mcp/get-page-structure/run?input%5Bpost_id%5D=206
+```
+
+Sai cách:
+- ❌ POST với body — server reject "Read-only abilities require GET method"
+- ❌ Query param trực tiếp `?post_id=206` — "input không phải là loại của object"
+- ❌ JSON-encoded query `?input={...}` — không decode đúng
+
+### Write abilities (POST method)
+
+Body wrapper bắt buộc:
+```json
+{
+  "input": {
+    "post_id": 206,
+    "element_id": "92f9b3b",
+    "settings": {...}
+  }
+}
+```
+
+### Discover abilities loaded
+
+```
+GET /wp-json/wp-abilities/v1/abilities
+```
+
+→ List all loaded abilities + their schemas. Khi MCP client tool báo error `-32603: Failed to get ability details: 404`, fallback sang direct REST call qua endpoint trên.
+
+## WP Admin upload (`async-upload.php`) vs REST `/wp/v2/media`
+
+2 endpoints upload qua **code path khác nhau**:
+
+| Endpoint | Auth | Hooks triggered | Failure modes |
+|---|---|---|---|
+| `/wp-admin/async-upload.php` | nonce + cookies | `wp_handle_upload`, `wp_generate_attachment_metadata` | UI-friendly errors |
+| `/wp/v2/media` (REST) | Basic Auth (App Password) | Same hooks BUT khác wrapper code | 500 fatal silent nếu hook crash |
+
+**Workaround khi REST broken**: Drag-drop qua WP Admin → vẫn work. Hữu ích cho bulk upload nếu script REST fail. Cũng dùng MCP `sideload_image` ability → khác code path thứ 3 — fallback nếu 2 path trên fail.

@@ -227,6 +227,82 @@ function walk_replace_grid(&$elements, &$found, $new_full_grid_html) {
 
 Xem [`pitfalls.md` "Walk-replace HTML widget trap"](../references/pitfalls.md) cho lessons đầy đủ.
 
+## Cross-page internal linking — Add NEW DOM > regex existing DOM
+
+Khi cần inject internal links từ pillar → N subpages (vd 26 cặp cảng), 2 approach:
+
+### Approach 1 (fragile): Regex match existing content
+
+Walk pillar's transit table HTML, regex match `<strong>HCM → Busan</strong>` → wrap với `<a>` tag. Coverage không đủ vì format inconsistent giữa các pillars (build qua khác script):
+- `HCM → Tokyo` (matched ✓)
+- `HCM → Osaka/Kobe` (slash → fail)
+- `HCM → Tanjung Priok` nhưng subpage là `hcm-jakarta` (port name vs city name mismatch)
+- `HCM (Cát Lái) → Nhava Sheva (direct)` (extra suffix → fail)
+
+Result: **~42% coverage** trên 5/8 pillars. Không acceptable cho SEO internal linking.
+
+### Approach 2 (winner): Inject explicit cards section
+
+Build 1 NEW container section per pillar, card grid links đến TẤT CẢ subpages by `post_parent`:
+
+```php
+$subs = get_posts([
+    'post_parent' => $pillar_id,
+    'post_type' => 'page',
+    'numberposts' => -1,
+]);
+
+$cards = '';
+foreach ($subs as $s) {
+    $url = get_permalink($s->ID);
+    $label = port_pair_label($s->post_name);  // 'hcm-busan' → 'HCM → Busan'
+    $cards .= "<a href='{$url}' class='sa-subpage-card'>...</a>";
+}
+
+$new_section = [
+    'id' => substr(bin2hex(random_bytes(4)), 0, 7),
+    'elType' => 'container',
+    'settings' => [
+        'content_width' => 'boxed',
+        'background_color' => '#F8FAFC',
+    ],
+    'elements' => [[
+        'id' => substr(bin2hex(random_bytes(4)), 0, 7),
+        'elType' => 'widget',
+        'widgetType' => 'html',
+        'settings' => ['html' => $cards],
+    ]],
+];
+
+// Insert before CTA cuối (last section)
+array_splice($data, count($data) - 1, 0, [$new_section]);
+```
+
+Result: **100% coverage** trên 8/8 pillars + Card UX cleaner than inline links + visible từ any scroll depth.
+
+### Marker class pattern (idempotent re-run)
+
+Re-run script không double-inject:
+```php
+$exists = false;
+array_walk_recursive($data, function ($v) use (&$exists) {
+    if (is_string($v) && stripos($v, 'sa-pillar-subpages') !== false) $exists = true;
+});
+if ($exists) return;  // skip — đã có
+```
+
+### Universal lesson: Add NEW DOM > regex existing DOM
+
+Khi cần inject internal links / elements / schema vào content đã có:
+- **Regex existing**: phụ thuộc format text → fragile, low coverage, nightmare nếu format vary
+- **Add new dedicated section** với marker class: 100% coverage, explicit positioning, easy to update/remove via marker, idempotent re-run
+
+Reusable pattern cho mọi cross-page linking work (related posts, breadcrumbs, child page directories, schema injection).
+
+### Bonus SEO impact
+
+Mỗi pillar inject N inbound `<a href>` đến subpages → strengthen taxonomy crawler signal + cards visible trên-fold của pillar bottom → user CTR tăng. Expected +5–10% organic CTR cho subpages trong 4–6 tuần (Google rebuild internal link graph).
+
 ## Verify-iterate-fix cycle
 
 Sau mỗi transform script run:
