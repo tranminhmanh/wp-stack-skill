@@ -128,3 +128,24 @@ add_filter('astra_main_header_display', function ($display) {
 ```
 
 ⚠️ Trước khi push mu-plugin, grep source Elementor Pro version cụ thể để verify method names tồn tại — xem [`security.md` "Mu-plugin API check"](security.md).
+
+## Astra Pro vs Elementor Pro — feature overlap matrix
+
+Stack chuẩn (xem [`stack.md`](stack.md)) là **Astra Free + Elementor Pro**, KHÔNG Astra Pro (chồng feature, dư thừa). Nhưng nếu user đã trả Astra Pro license (sunk cost), giữ Astra Pro cho non-builder pages.
+
+| Feature | Astra Pro | Elementor Pro | Khuyến nghị |
+|---|---|---|---|
+| Header builder | ✅ | ✅ Theme Builder | Pick **Elementor** (mạnh hơn, responsive tốt hơn) |
+| Footer builder | ✅ | ✅ Theme Builder | Pick **Elementor** |
+| Mega menu | ✅ | ✅ Mega Menu Pro | Pick **Elementor** (responsive tốt hơn) |
+| Custom layouts (hooks) | ✅ Astra Hooks | ✅ Theme Builder | Pick **Elementor** |
+| Schema markup | ✅ Local Business | ❌ (dùng Rank Math) | **Disable Astra schema**, dùng Rank Math (tránh duplicate) |
+| Mobile breakpoint | ✅ Customizer | ✅ Editor settings | Set ở Astra Customizer (global) |
+| Site Identity | ✅ | ❌ | Astra (theme-level) |
+| Performance | Lighter | Heavier | **Astra** cho non-builder pages (blog single, archive) |
+
+**Decision flow**:
+- Site mới (no license commitment): **Astra Free + Elementor Pro** (stack chuẩn)
+- Đã có Astra Pro license: giữ → **disable Astra schema** + **dùng Elementor Theme Builder** cho header/footer/mega menu/custom layouts. Astra Pro tiếp tục handle non-builder default templates.
+
+**Anti-pattern**: build cùng 1 header trong CẢ Astra Header Builder VÀ Elementor Theme Builder → conflict, browser load cả 2 → double header.

@@ -86,6 +86,78 @@ Issue #27. Workaround:
 - Verify endpoint: `curl https://<site>/wp-json/mcp/elementor-mcp-server`
 - Check WordPress error log
 
+### 11. MCP client tool 404 → fallback REST direct
+
+MCP client (Claude Desktop) load schema list 184 tools nhưng server-side WP plugin có thể chỉ load 50/184 abilities (core + elementor-mcp). Khi client gọi tool deferred chưa register → error `-32603: Failed to get ability details: 404`.
+
+**Symptoms**: `mcp__<server>__wp_elementor_mcp_*` tools return 404 dù tool xuất hiện trong deferred list.
+
+**Verify abilities loaded server-side**:
+```bash
+curl -u user:apppass https://site/wp-json/wp-abilities/v1/abilities | jq '. | length'
+```
+
+**Fallback**: gọi trực tiếp REST `/wp-json/wp-abilities/v1/abilities/{name}/run`.
+
+### 12. WP Abilities API input wrapper format khác giữa GET vs POST
+
+**Read-only abilities** (GET method bắt buộc) — dùng PHP-style nested array:
+```
+GET /wp-json/wp-abilities/v1/abilities/elementor-mcp/get-page-structure/run
+    ?input%5Bpost_id%5D=206
+```
+
+**Sai cách**:
+- ❌ POST với body — server reject "Read-only abilities require GET method"
+- ❌ Query param trực tiếp `?post_id=206` — "input không phải là loại của object"
+- ❌ JSON-encoded query `?input={...}` — không decode đúng
+
+**Write abilities** (POST method) — body wrapper bắt buộc:
+```json
+POST /wp-json/wp-abilities/v1/abilities/elementor-mcp/update-widget/run
+{
+  "input": {
+    "post_id": 206,
+    "element_id": "92f9b3b",
+    "settings": {...}
+  }
+}
+```
+
+Helper Python:
+```python
+import urllib.parse
+# Read-only
+def call_read(name, params):
+    qs = urllib.parse.urlencode({f'input[{k}]': v for k, v in params.items()})
+    return requests.get(f'/wp-json/wp-abilities/v1/abilities/{name}/run?{qs}', auth=...)
+
+# Write
+def call_write(name, params):
+    return requests.post(f'/wp-json/wp-abilities/v1/abilities/{name}/run',
+                          json={'input': params}, auth=...)
+```
+
+### 13. Elementor image widget update — full object format bắt buộc
+
+`update-widget` ability với image widget cần đầy đủ object, KHÔNG đủ nếu chỉ pass `id`:
+
+```json
+{
+  "image": {
+    "id": 3872,
+    "url": "https://site/wp-content/uploads/.../file.jpg",
+    "alt": "VN alt text cho SEO",
+    "source": "library",
+    "size": ""
+  }
+}
+```
+
+Lý do: Elementor cache URL trong `_elementor_data`, không re-resolve từ ID. Update chỉ ID → URL cũ vẫn render.
+
+**Sau update**: Frontend tự generate thumb tại `wp-content/uploads/elementor/thumbs/[basename]-rn[hash].jpg` (tên xáo trộn để bypass CDN cũ).
+
 ## Astra
 
 ### 1. Cache local font thiếu Vietnamese
@@ -154,6 +226,54 @@ Check DNS A record point đúng + port 80 mở.
 
 ### PHP memory limit thấp
 wp-config: `define('WP_MEMORY_LIMIT', '512M');` + provider PHP settings tăng.
+
+### Shared hosting PHP-FPM worker exhaustion → REST upload silent fatal
+
+**Triệu chứng**: POST `/wp/v2/media` với JPG/PNG > vài KB → HTTP 500 `wp-die-message` "Đã có lỗi nghiêm trọng" silent. Pattern lừa người:
+- Tiny PNG 1×1 (68 bytes) → ✅ upload OK, auto-convert WebP
+- JPG bất kỳ size 6KB→600KB → ❌ HTTP 500
+- PNG > vài KB → ❌ HTTP 500
+- Multipart/form-data, raw binary → cùng fail
+- sips re-encoded baseline JPEG → vẫn fail
+- `debug.log` empty (WP_DEBUG_LOG ON cũng không log)
+
+**Root cause**: Shared hosting (AZDIGI, A2, Hostinger, các cPanel-based) thường giới hạn PHP-FPM worker pool 5-10 workers. Rapid REST API uploads <1s gap → workers crash mid-process khi GD generate intermediate sizes. Worker chết trước khi WP kịp ghi log → silent failure.
+
+**Tại sao tiny PNG vượt qua**: 1×1 quá nhỏ → WP skip thumbnail generation → bypass GD-intensive code path → false hint khiến debug đi sai hướng (ngỡ format JPG-specific).
+
+**KHÔNG phải:**
+- Plugin issue (isolation test deactivate Foxtool/LiteSpeed/Image-optim → đều innocent)
+- Memory limit (1024M dư thừa cho 600KB JPG)
+- GD library bug (tiny PNG WebP convert OK)
+- WAF Imunify360 (auth pass, basic POST work)
+
+**Fix vĩnh viễn**:
+```python
+import time
+for img in images:
+    requests.post('/wp-json/wp/v2/media', files=img)
+    time.sleep(3)  # let PHP-FPM workers settle
+```
+
+**Recovery khi đã exhaust**: Workers tự recycle sau ~5 phút. KHÔNG restart anything.
+
+**Áp dụng cho**: Mọi REST batch trên shared hosting:
+- `/wp/v2/media` upload
+- `/wp/v2/posts` bulk update
+- Elementor MCP `update-widget` batch
+- Plugin install/activate sequence
+- User CRUD batch
+
+### WP Admin upload (`async-upload.php`) vs REST `/wp/v2/media`
+
+2 endpoints upload qua **code path khác nhau**:
+
+| Endpoint | Auth | Failure modes |
+|---|---|---|
+| `/wp-admin/async-upload.php` | nonce + cookies | UI errors, hooks safer |
+| `/wp/v2/media` (REST) | Basic Auth (App Password) | 500 fatal silent nếu hook crash hoặc worker exhaust |
+
+**Workaround khi REST broken**: Drag-drop qua WP Admin Media Library → vẫn work. Hữu ích cho bulk upload từ user nếu script fail nhưng cần ship gấp.
 
 ## Elementor V4 Layout / CSS pitfalls
 
@@ -505,3 +625,196 @@ function walk_replace_grid(&$elements, &$found, $new_full_grid_html) {
 - Rebuild whole widget thay vì targeted replace per item
 - Detect target widget bằng marker class (existing class) tồn tại + missing new marker
 - Always check Elementor data size before/after để detect data loss bugs
+
+## CRITICAL: Pro Form silent fail — `add-form` MCP không set `custom_id`
+
+Forms built qua MCP `add-form` ở Elementor Pro có thể submit FAIL 100% trong N tuần production mà không alert ai (silent dropped leads). Bug 9-week silent ở ShipAsia = critical operational gap.
+
+**Triệu chứng**: Submit form trả `{"success":false, "data":{"message":"submission failed", "data":{"":""}}}` (empty key trong errors).
+
+**Root cause**: MCP `add-form` không enforce `custom_id` field. Without it, rendered HTML có:
+```html
+<input name="form_fields[]"  id="form-field-" ...>   ← name empty key
+<input name="form_fields[]"  id="form-field-" ...>
+<select name="form_fields[]" id="form-field-" ...>
+```
+
+Server-side `$_POST['form_fields']` chỉ có numeric keys `[0,1,2]` → Elementor không match được vào field schema (cần associative key) → mọi field bị mark missing/invalid → 500.
+
+**Detection — luôn smoke-test ngay sau MCP `add-form`**:
+```bash
+curl -s "https://site.com/page/?nocache=1" | python3 -c "
+import sys, re
+html = sys.stdin.read()
+m = re.search(r'<form[^>]*elementor-form[^>]*>(.*?)</form>', html, re.S)
+form = m.group(1) if m else ''
+inputs = re.findall(r'name=\"form_fields\[([^\]]*)\]\"', form)
+print('Field names:', inputs)
+# Healthy: ['name', 'phone', 'route']
+# BROKEN:  ['', '', '']  ← TẤT CẢ EMPTY = missing custom_id
+"
+```
+
+**Fix**: walk `_elementor_data`, set `custom_id` semantic per field:
+```php
+$plan = [
+    35 => [
+        0 => ['custom_id' => 'name',  'field_type' => 'text'],
+        1 => ['custom_id' => 'phone'],
+        2 => ['custom_id' => 'route'],
+    ],
+];
+foreach ($plan as $pid => $cfg) {
+    $data = json_decode(get_post_meta($pid, '_elementor_data', true), true);
+    walk_form_fields($data, function (&$f, $i) use ($cfg) {
+        if (isset($cfg[$i])) foreach ($cfg[$i] as $k=>$v) $f[$k] = $v;
+        if (empty($f['_id'])) $f['_id'] = substr(md5(uniqid()), 0, 7);
+    });
+    update_post_meta($pid, '_elementor_data', wp_slash(wp_json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)));
+}
+```
+
+**Custom_id naming convention** (semantic, lower_snake_case): `name`, `email`, `phone`, `company`, `route`, `container_type`, `qty`, `notes`, `consent`. KHÔNG dùng `field_1`, `field_2` (mặc định Elementor) — invisible từ admin Submissions list.
+
+**Cache trap sau fix**: phải xóa `_elementor_css` post meta + clear LiteSpeed + opcache_reset, hoặc HTML rendered vẫn name rỗng:
+```php
+delete_post_meta($pid, '_elementor_css');
+\Elementor\Plugin::$instance->files_manager->clear_cache();
+// + rm wp-content/uploads/elementor/css/post-{ID}.css
+```
+
+**Detection cron — pre-launch recommended**: xem [`workflows/smtp-relay-setup.md`](../workflows/smtp-relay-setup.md) "Health check cron" — chạy daily, alert nếu form broken.
+
+**`submit_actions` order**: đặt `save-to-database` FIRST trong array → guarantee lưu lead ngay cả khi email/webhook fail downstream:
+```
+✅ submit_actions: ["save-to-database", "email", "webhook"]
+❌ submit_actions: ["email", "webhook", "save-to-database"]
+```
+
+## CRITICAL: Elementor kit `_elementor_page_settings` storage format trap
+
+Site-wide HTTP 500 sau khi update kit `custom_css` qua PHP nếu sai data type cho `_elementor_page_settings` post meta:
+```
+Fatal error: Uncaught TypeError: Cannot access offset of type string on string
+    in elementor/core/settings/page/manager.php:255
+
+# OR
+Fatal error: Uncaught TypeError: trim(): Argument #1 ($string) must be of type string, array given
+    in elementor-pro/modules/custom-css/module.php:101
+```
+
+**Storage format reference**: kit (post type `elementor_library`, subtype `kit`) lưu `_elementor_page_settings` là **PHP-serialized array**, KHÔNG JSON string. Khác với `_elementor_data` (luôn JSON).
+
+```php
+// CORRECT — pass array straight, WP auto-serializes
+$ps = [
+    'custom_css' => 'body { ... } /* CSS string */',     // STRING (không nested!)
+    'viewport_md' => '...',
+    'viewport_lg' => '...',
+];
+update_post_meta($kit_id, '_elementor_page_settings', $ps);
+
+// WRONG #1: Nested array (gây trim() fatal)
+$ps['custom_css'] = ['custom_css' => $css_string];
+
+// WRONG #2: JSON string (gây offset-of-string-on-string fatal)
+update_post_meta($kit_id, '_elementor_page_settings', wp_slash(wp_json_encode($ps)));
+```
+
+**Fix algorithm khi gặp fatal**:
+```php
+$kit_id = (int) get_option('elementor_active_kit');
+$ps = get_post_meta($kit_id, '_elementor_page_settings', true);
+
+// Case A: Stored as JSON string instead of array
+if (is_string($ps)) $ps = json_decode($ps, true) ?: [];
+
+// Case B: custom_css nested as array
+if (is_array($ps['custom_css'] ?? null) && isset($ps['custom_css']['custom_css'])) {
+    $ps['custom_css'] = $ps['custom_css']['custom_css']; // unnest
+}
+
+update_post_meta($kit_id, '_elementor_page_settings', $ps);
+delete_post_meta($kit_id, '_elementor_css'); // force CSS regen
+```
+
+**Universal lesson**: NEVER `wp_json_encode` meta value trừ khi chắc format expected là JSON. WP default storage là PHP `serialize()` → `maybe_unserialize()` retrieval. Pass array straight to `update_post_meta`. **Riêng `_elementor_data` là exception** (luôn JSON string trong DB). Còn `_elementor_page_settings`, `_elementor_controls_usage`, `_elementor_template_type` đều PHP-serialized.
+
+## AZDIGI shared host PHP-FPM worker exhaustion
+
+POST `/wp/v2/media` upload (JPG/PNG > vài KB) hoặc rapid REST batch ops trong <1s gap → **HTTP 500 fatal silent**. `debug.log` empty vì worker chết trước khi WP kịp ghi log.
+
+**False hints khi debug**:
+- Tiny PNG 1×1 (68 bytes) upload OK → tưởng GD library bug
+- Plugin isolation test (deactivate Foxtool/LiteSpeed) → đều innocent
+- Memory limit 1024M dư cho 600KB JPG → không phải memory
+- WAF Imunify360 → auth pass, basic POST work
+
+**Root cause**: PHP-FPM worker pool exhaustion. Workers crash mid-process trước khi WP load complete.
+
+**Fix vĩnh viễn**:
+```python
+import time
+for img in images:
+    upload(img)
+    time.sleep(3)  # let PHP-FPM workers settle
+```
+
+3 giây gap đủ workers recycle. Verified với 19 ảnh JPG (62KB–266KB) upload thành công 100%.
+
+**Recovery khi đã exhaust**: workers tự recycle ~5 phút. KHÔNG cần restart anything, chỉ đợi.
+
+**Áp dụng cho**: mọi REST batch operation trên AZDIGI shared (media upload, post bulk update qua MCP, plugin install/activate, user CRUD).
+
+## Bash `$(curl ...)` Vietnamese UTF-8 corrupt
+
+Function bash `resp=$(curl ... media)` rồi `jq <<< "$resp"` → fail "Invalid string: control characters from U+0000 through U+001F". Cùng lệnh inline (không qua function/subshell substitution) thì OK.
+
+**Root cause**: Response chứa Vietnamese UTF-8 + content-encoding khác qua bash subshell substitution + heredoc → bị normalize sai byte.
+
+**Fix**: KHÔNG pipe response vào jq qua bash variable. Luôn tee ra file:
+```bash
+# WRONG
+resp=$(curl ... /wp/v2/media)
+jq <<< "$resp"
+
+# RIGHT
+curl -o /tmp/resp.json ... /wp/v2/media
+jq -r '.id' /tmp/resp.json
+```
+
+## WP media duplicate filename auto-suffix
+
+Upload `image.jpg` mà file cùng tên đã tồn tại (orphan từ lần upload trước fail) → WP auto-rename `image-1.jpg`. URL `.source_url` reflect tên mới → broken nếu code expect filename gốc.
+
+**Lesson**: Trước khi upload, search media theo tên file:
+```bash
+curl -u "$WP_USER:$WP_PASS" \
+  "$WP_SITE/wp-json/wp/v2/media?search=$(basename $FILE .jpg)"
+```
+
+Nếu duplicate orphan, DELETE attachment cũ (`?force=true` skip trash):
+```bash
+curl -u "$WP_USER:$WP_PASS" -X DELETE \
+  "$WP_SITE/wp-json/wp/v2/media/$ID?force=true"
+```
+
+Hoặc dùng versioned filename (`image-v2.jpg`) để tránh conflict.
+
+## Emergency debug pattern — surface fatal mà không dựng WP_DEBUG
+
+Khi site 500 + log empty (PHP-FPM crash) + khó access wp-config, deploy nhanh mu-plugin để force `display_errors`:
+
+```bash
+# Inside container or via docker exec
+echo '<?php ini_set("display_errors",1); error_reporting(E_ALL);' \
+    > /var/www/html/wp-content/mu-plugins/_dbg.php
+
+# Curl page to surface fatal in HTML response
+curl -s "https://site.com/?dbg=1" | grep -iE "fatal|line [0-9]+|TypeError" | head -3
+
+# Cleanup ngay sau debug
+rm /var/www/html/wp-content/mu-plugins/_dbg.php
+```
+
+→ Trong 30 giây catch được "Uncaught TypeError... in /path/to/plugin.php:123" mà không động vào `wp-config.php`. Pattern reuse cho mọi WP-on-Docker debugging.

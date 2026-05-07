@@ -178,18 +178,34 @@ ShipAsia 5 blogs: 2/5 weak schnell + 1 borderline → 3 Pro regens. Final cost $
 
 ### Replicate rate limits (gotcha)
 
-Free tier (credit balance < $5):
+**Per-minute limit (free tier, credit balance < $5)**:
 - 6 requests/minute (1 burst)
 - Batch generate: `sleep 11` giữa mỗi call
 
+**Parallel limit (any tier)**: > 2 calls đồng thời → 1 succeed, others fail HTTP 429 IMMEDIATE (không phải sau N requests/min). Test 4 calls với `&` + `wait` → 3/4 fail 429 lập tức.
+
+**Cost note**: Failed 429 calls KHÔNG bị charge — request không tạo prediction. Safe to retry.
+
+**Workaround**:
+- Max 2 parallel cho urgent batch (vẫn sleep 5–10s giữa các pair)
+- Sequential với `sleep 5–10` cho batch >3 (recommended)
+- Nạp credit > $5 unlock burst limits per-minute (nhưng parallel limit vẫn áp dụng)
+
 ```bash
+# Sequential batch (safest)
 for prompt in "${PROMPTS[@]}"; do
-    sleep 11  # rate limit guard
+    sleep 11  # per-minute rate limit guard
     ./scripts/genimg.sh "$prompt" ...
 done
-```
 
-Workaround: nạp credit > $5 để unlock burst limits.
+# Pair-parallel (if urgent)
+for ((i=0; i<${#PROMPTS[@]}; i+=2)); do
+    ./scripts/genimg.sh "${PROMPTS[i]}" ... &
+    [ -n "${PROMPTS[i+1]}" ] && ./scripts/genimg.sh "${PROMPTS[i+1]}" ... &
+    wait
+    sleep 10  # cooldown before next pair
+done
+```
 
 ## Auto-find user attachments
 

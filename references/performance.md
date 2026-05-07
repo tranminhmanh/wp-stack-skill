@@ -113,6 +113,26 @@ curl -u "$WP_USER:$WP_PASS" -X POST "$URL" -d '{"status":"active"}'
 
 Suspected root cause: server-level LSWS cache không nghe WordPress-level purge signal — chỉ plugin lifecycle hook (deactivate) trigger được host's cache invalidation.
 
+### LiteSpeed: 2 invalidation paths phải phân biệt rõ
+
+LiteSpeed cache có 2 path riêng — confusion gây debug nhầm:
+
+| Path | Trigger | Status |
+|---|---|---|
+| **Auto-purge per-post** | `save_post` hook fires (any post update through Elementor save handler) | ✅ Works automatically — page cache invalidated ngay khi save |
+| **Manual purge tool/API** | `\LiteSpeed\Purge::purge_all()`, REST `X-LiteSpeed-Purge`, plugin "Purge All" button | ❌ Broken trên AZDIGI shared host — chỉ plugin toggle workaround |
+
+**Practical implication**:
+- MCP write trigger `save_post` (vd `mcp_batch_update`, `update_widget`, `update_element`) → cache tự xoá → frontend hit fresh data ngay.
+- MCP write CHỈ update meta thẳng (vd `update_page_from_file`) → KHÔNG trigger save_post → cache cũ vẫn serve. Phải follow-up bằng `batch_update` (xem [`elementor-mcp.md` "`update_page_from_file` không regen post_content"](elementor-mcp.md)).
+
+**Verify cache state**:
+```bash
+curl -sI "https://site.com/page/" | grep -i x-litespeed
+# x-litespeed-cache: hit       → đang serve cache cũ
+# x-litespeed-cache: miss      → server generated fresh, sẽ cache lại
+```
+
 ## Pre-deploy / pre-iteration cache clear ritual
 
 Khi build/edit qua MCP rồi screenshot/test ngay:

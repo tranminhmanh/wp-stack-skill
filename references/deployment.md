@@ -211,3 +211,69 @@ ssh user@host 'docker cp /tmp/script.php <container>:/tmp/ && docker exec <conta
 ```
 
 Avoid all shell escape layering.
+
+## REST API response capture safety (Vietnamese UTF-8)
+
+Bash subshell substitution `resp=$(curl ...)` corrupt control characters trong Vietnamese UTF-8 response. `jq <<< "$resp"` fail "Invalid string: control characters from U+0000 through U+001F".
+
+**Fix**: Tee response ra file trước khi parse, KHÔNG pipe qua bash variable:
+```bash
+# WRONG
+resp=$(curl -u "$WP_USER:$WP_PASS" "$WP_SITE/wp-json/wp/v2/media")
+jq <<< "$resp"
+
+# RIGHT
+curl -u "$WP_USER:$WP_PASS" "$WP_SITE/wp-json/wp/v2/media" -o /tmp/resp.json
+jq -r '.[].id' /tmp/resp.json
+```
+
+Áp dụng cho mọi REST endpoint trả Vietnamese (Posts, Pages, Media, Terms, Comments).
+
+## WP media duplicate filename pattern
+
+Upload `image.jpg` mà file cùng tên đã tồn tại (orphan từ upload fail trước) → WP auto-rename `image-1.jpg`. `.source_url` reflect tên mới → code expect filename gốc bị broken.
+
+**Pre-upload check**:
+```bash
+# Search by basename
+curl -u "$WP_USER:$WP_PASS" \
+  "$WP_SITE/wp-json/wp/v2/media?search=$(basename $FILE .jpg)" \
+  -o /tmp/check.json
+EXISTING=$(jq -r '.[0].id // empty' /tmp/check.json)
+
+if [ -n "$EXISTING" ]; then
+    # Option A: DELETE old (force=true skip trash)
+    curl -u "$WP_USER:$WP_PASS" -X DELETE \
+      "$WP_SITE/wp-json/wp/v2/media/$EXISTING?force=true"
+    # Option B: Versioned filename
+    # cp "$FILE" "${FILE%.jpg}-v2.jpg"
+fi
+
+# Then upload
+curl -u "$WP_USER:$WP_PASS" -X POST \
+  -H "Content-Disposition: attachment; filename=\"$(basename $FILE)\"" \
+  -H "Content-Type: image/jpeg" \
+  --data-binary "@$FILE" \
+  "$WP_SITE/wp-json/wp/v2/media"
+```
+
+## WP REST hidden useful endpoints
+
+Endpoints không document rõ trong WP core nhưng cực hữu ích cho automation:
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /wp-json/wp/v2/plugins` | List all plugins (admin only) |
+| `POST /wp-json/wp/v2/plugins/{slug}/{slug}` body `{"status":"inactive"}` | Deactivate plugin (recovery khi plugin crash site) |
+| `GET /wp-json/wp/v2/users/me?context=edit` | Full user details + caps (`upload_files`, `unfiltered_html`, ...) — verify trước automation |
+| `POST /wp-json/wp/v2/media/{id}` (acts as PATCH) | Update title/alt_text/caption sau upload |
+| `DELETE /wp-json/wp/v2/media/{id}?force=true` | Permanent delete (bypass trash) |
+| `GET /wp-json/` | List all REST namespaces — discover plugin endpoints |
+| `GET /wp-json/wp-abilities/v1/abilities` | List all loaded MCP abilities + schemas |
+
+**Headers hữu ích**:
+- `Cache-Control: no-cache` + `Pragma: no-cache` → bypass LSCache cho 1 request
+- `Content-Disposition: attachment; filename="x.jpg"` → set filename khi upload raw binary
+- `Authorization: Basic <base64(user:apppassword)>` → App Password auth
+
+**Fallback chain khi 1 path broken**: REST `/wp/v2/media` → `/wp-admin/async-upload.php` → MCP `sideload_image` ability — 3 code paths khác nhau, khác failure modes.
