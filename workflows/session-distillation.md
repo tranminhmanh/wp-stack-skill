@@ -35,7 +35,7 @@ Cuối session, ghi nhanh 5-15 thứ học được. Không quan tâm format. V�
 - App password phải có space khi base64
 - claude mcp add bị parse fail nếu --header trước name
 - Astra entry-title duplicate H1 nếu page_template không phải canvas
-- 13/20 PKM page thiếu H1 vì... (project-specific, skip)
+- 13/20 page của Site X thiếu H1 vì... (project-specific, skip)
 - Build dashboard skill output đẹp với data:build-dashboard
 - WebFetch không parse JSON-LD đầy đủ → đừng tin
 ```
@@ -47,7 +47,7 @@ Mỗi insight → đánh dấu skill / project / CLAUDE.md:
 - App password có space: SKILL (universal)
 - claude mcp add header order: SKILL (universal)
 - Astra entry-title H1 dup: SKILL (đã có ở pitfalls.md, có thể có case mới?)
-- 13/20 PKM page thiếu H1: PROJECT MEMORY (specific)
+- 13/20 page của Site X thiếu H1: PROJECT MEMORY (specific)
 - data:build-dashboard tốt cho audit: SKILL workflow update
 - WebFetch fail SEO parse: SKILL pitfall mới
 ```
@@ -86,7 +86,7 @@ Mỗi insight đáng distill phải có ≥3 trong 4:
 4. **Reusability**: pattern dùng được cho site khác / case khác — không hardcode 1 project
 
 ❌ Anti-pattern (insight kém):
-- "PKM 13 page thiếu H1" — quá specific, project memory chứ không skill
+- "13 page của Site X thiếu H1" — quá specific, project memory chứ không skill
 - "Đôi khi MCP fail, restart" — không root cause, không reproduction
 - "Dùng Rank Math thay Yoast" — opinion không có data backing
 
@@ -113,7 +113,7 @@ Mỗi đợt distill = 1 entry version (semver):
 
 ### Lessons applied from
 
-- PKM Mai Thanh project session 2026-05-10 — 4h audit + MCP bridge debugging
+- Inherited B2B site debug session 2026-05-10 — 4h audit + MCP bridge debugging
 ```
 
 Bump version theo semver:
@@ -126,11 +126,11 @@ Bump version theo semver:
 Memory là nơi insight "ấp" — sau N session áp dụng pattern, nếu pattern lặp lại trên ≥2 project, **promote** lên skill:
 
 ```
-PKM project memory:
+Site A project memory:
   "MCP route /mcp/elementor-mcp-server cần connector riêng"
-livesfx project memory:
+Site B project memory:
   "Cùng pattern — connector riêng cho elementor-mcp-server"
-chacavungtau project memory:
+Site C project memory:
   "Cùng pattern"
 
 → promote thành skill references/mcp-architecture.md
@@ -163,13 +163,13 @@ Skill có thể sai. Khi gặp insight phản bác:
 
 ### Project memory updates
 
-- project_pkmaithanh.md — stack details (Astra Pro, Elementor 4.0.7, 24 plugins)
+- project_<slug>.md — stack details (theme, builder version, plugin count)
 - reference_mcp_access.md — connector config + REST workaround pattern
 
 ### Insights NOT distilled (rationale)
 
-- "13/20 PKM page thiếu H1" — project-specific, kept in project memory only
-- "WPForms vs FluentForms duplicate" — case-by-case audit finding, not universal pattern
+- "13/20 page X thiếu H1" — project-specific, kept in project memory only
+- "Form plugin A vs Form plugin B duplicate" — case-by-case audit finding, not universal pattern
 
 ### Time invested
 

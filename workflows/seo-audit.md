@@ -397,7 +397,7 @@ if __name__ == "__main__":
 - ✅ JSON encode safe — không cần `printf '%s' | jq -Rs .` workaround
 - ✅ Add column mới = sửa 1 dòng dict, không phải sửa 5 chỗ
 
-Battle-tested PKM 2026-05-10: 20 URL, 3 phút runtime, 0 escape bug.
+Battle-tested 2026-05-10: 20 URL, 3 phút runtime, 0 escape bug.
 
 ## ⚠️ KHÔNG dùng WebFetch cho SEO data extraction
 
@@ -407,7 +407,7 @@ WebFetch convert HTML → markdown rồi parse → mất nhiều structured data
 - HTML comments (Yoast/Rank Math hint) bỏ
 - Multi-H1 đếm sai
 
-**Reproduce thực tế** (PKM home): WebFetch hỏi "extract JSON-LD types" → output "No JSON-LD detected". Curl raw + grep `'"@type"'` → tìm thấy 8 types (Article, GeoCoordinates, ImageObject, Person, Place, SearchAction, WebPage, WebSite).
+**Reproduce thực tế**: WebFetch a home page (WP + Rank Math + Schema enabled) hỏi "extract JSON-LD types" → output "No JSON-LD detected". Curl raw + grep `'"@type"'` → tìm thấy 8 types (Article, BreadcrumbList, ImageObject, Organization, SearchAction, WebPage, WebSite, ...).
 
 **Rule**: SEO audit phải dùng raw HTML parse. WebFetch chỉ cho user-facing content (article body, FAQ).
 
@@ -431,7 +431,7 @@ Layout:
 
 Dashboard mở được trong browser, send qua Slack/email cho stakeholder không có terminal.
 
-Battle-tested PKM 2026-05-10: dashboard 32KB embed 20 page, render < 100ms, share được link Synology Drive.
+Battle-tested 2026-05-10: dashboard 32KB embed 20 page, render < 100ms, share được link via cloud storage.
 
 ## Liên quan
 

@@ -1,6 +1,6 @@
 # Workflow: SMTP Relay Setup (budget VPS)
 
-End-to-end transactional email cho WordPress trên VPS rẻ (BNIX, OVH bare, Hetzner cloud, DigitalOcean) bị block port 25 outbound. Pattern proven: **15 phút Mạnh setup Brevo + DNS** + **20 phút install WP Mail SMTP + config + test** = end-to-end working, $0/tháng.
+End-to-end transactional email for WordPress on a budget VPS (BNIX, OVH bare, Hetzner cloud, DigitalOcean) where port 25 outbound is blocked. Pattern proven: **~15 min for the operator to set up Brevo + DNS** + **~20 min to install WP Mail SMTP + config + test** = end-to-end working, $0 / month.
 
 ## Khi nào dùng
 

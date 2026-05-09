@@ -36,8 +36,8 @@ echo "Authorization: Basic $B64"   # length should be ~52 chars
 claude mcp add \
   -t http \
   -s user \
-  phongkhammaithanh-com-elementor \
-  "https://phongkhammaithanh.com/wp-json/mcp/elementor-mcp-server" \
+  acme-elementor \
+  "https://example.com/wp-json/mcp/elementor-mcp-server" \
   -H "Authorization: Basic $B64"
 
 # Output: "Added HTTP MCP server ... to user config / File modified: ~/.claude.json"
@@ -69,10 +69,10 @@ Khuyến nghị:
 ```bash
 # Health check tất cả MCP server
 claude mcp list
-# Tìm dòng: "phongkhammaithanh-com-elementor: <url> (HTTP) - ✓ Connected"
+# Tìm dòng: "acme-elementor: <url> (HTTP) - ✓ Connected"
 
 # Inspect 1 server
-claude mcp get phongkhammaithanh-com-elementor
+claude mcp get acme-elementor
 # Output: scope, status, type, url, headers (Basic auth visible base64)
 ```
 
@@ -96,8 +96,8 @@ Workaround tạm thời (nếu không restart được): dùng [`references/wp-a
 
 Trong session mới:
 ```
-ToolSearch query: "+phongkhammaithanh-com-elementor list-pages"
-→ Should return mcp__phongkhammaithanh-com-elementor__elementor-mcp-list-pages schema
+ToolSearch query: "+acme-elementor list-pages"
+→ Should return mcp__acme-elementor__elementor-mcp-list-pages schema
 ```
 
 Hoặc gọi thử ngay tool ergonomic:
@@ -125,12 +125,12 @@ done
 claude mcp list
 ```
 
-Naming convention: `<site-slug>-<plugin-shortname>` — parallel với pattern livesfx có (`livesfx-vn-global`, `livesfx-vn-elementor`).
+Naming convention: `<site-slug>-<plugin-shortname>` — ví dụ pattern: `acme-global` cho MCP Adapter core + `acme-elementor` cho elementor-mcp endpoint.
 
 ## Removing a connector
 
 ```bash
-claude mcp remove "phongkhammaithanh-com-elementor" -s user
+claude mcp remove "acme-elementor" -s user
 ```
 
 Sau khi user revoke App Password phía WP, connector vẫn còn entry trong `~/.claude.json` nhưng auth fail. Remove cleanup luôn.
