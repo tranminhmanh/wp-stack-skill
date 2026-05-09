@@ -153,6 +153,49 @@ foreach ($pages as $page) {
 }
 ```
 
+## Rank Math meta NOT exposed via REST — one-shot mu-plugin pattern
+
+`PATCH /wp/v2/pages/{id}` with `meta: {rank_math_description: "..."}` returns HTTP 200 but the meta does NOT change. Rank Math does not register `show_in_rest=true` on its meta keys, so the REST endpoint silently ignores the update.
+
+The same pattern applies to any third-party meta with `show_in_rest=false` (ACF private fields, custom plugin meta, hidden post meta).
+
+**Workaround**: token-guarded one-shot mu-plugin that calls `update_post_meta()` directly, runs once, then stubs itself.
+
+```php
+// wp-content/mu-plugins/_oneshot.php (deploy → hit URL → stub)
+<?php
+add_action('init', function () {
+    if (($_GET['_oneshot_token'] ?? '') !== 'STRONG-TOKEN-HERE') return;
+
+    // Apply the targeted meta updates
+    update_post_meta(36, 'rank_math_description', 'Clean meta description without artifacts.');
+    update_post_meta(37, 'rank_math_focus_keyword', 'target keyword');
+    // ... add more updates here
+
+    echo "OK\n";
+    exit;
+});
+```
+
+Trigger:
+```bash
+curl "https://example.com/?_oneshot_token=STRONG-TOKEN-HERE"
+# Output: OK
+```
+
+Stub the file immediately after (Fileman API on shared hosts has no delete → overwrite with empty stub):
+```bash
+echo '<?php // disabled' > wp-content/mu-plugins/_oneshot.php
+```
+
+**Reusable for**:
+- Rank Math meta (`rank_math_*`)
+- ACF private fields (when `show_in_rest=false` on the field group)
+- Third-party plugin meta hidden from REST
+- WP options that aren't in the registered allowlist
+
+When you need direct DB access without SSH, this pattern bridges the gap.
+
 ## Inject Schema markup into `_elementor_data` via PHP
 
 When you need to add schema (Service, BlogPosting, FAQPage) to pages already built via MCP:

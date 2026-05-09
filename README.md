@@ -79,7 +79,7 @@ wp-stack/
 │   ├── vietnamese.md                 ← Vietnamese-locale concerns (fonts, slugs, schema)
 │   └── pitfalls.md                   ← 30+ pitfalls with detection + fix
 │
-├── workflows/                        ← Step-by-step procedures (8 files)
+├── workflows/                        ← Step-by-step procedures (9 files)
 │   ├── new-site-setup.md             ← Set up a new site A → Z
 │   ├── add-cpt.md                    ← Create a Custom Post Type
 │   ├── theme-builder-loop.md         ← Build a Loop template
@@ -87,7 +87,8 @@ wp-stack/
 │   ├── clone-transform-pattern.md    ← Bulk-build N similar pages via PHP transform
 │   ├── og-image-generation.md        ← 4-tier OG image coverage strategy
 │   ├── seo-audit.md                  ← 3-tier SEO audit (PHP + Bash + Python)
-│   └── smtp-relay-setup.md           ← Brevo SMTP relay for budget VPS
+│   ├── smtp-relay-setup.md           ← Brevo SMTP relay for budget VPS
+│   └── multilingual-polylang.md      ← Polylang Free bilingual site (52 vi + 52 en)
 │
 └── templates/                        ← Reusable assets
     ├── project-claude-md-template.md ← Template for project CLAUDE.md
