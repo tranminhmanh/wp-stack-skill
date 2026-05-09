@@ -78,20 +78,72 @@ Nếu đã có:
 
 ### 5. Quality bar — insight ăn được
 
-Mỗi insight đáng distill phải có ≥3 trong 4:
+Mỗi insight đáng distill phải có ≥4 trong 5:
 
 1. **Root cause**: vì sao chuyện đó xảy ra (không chỉ "làm gì khi gặp")
 2. **Reproduction**: trigger condition cụ thể, kèm command/data input
 3. **Fix**: cách giải quyết, kèm code/config/command verify được
 4. **Reusability**: pattern dùng được cho site khác / case khác — không hardcode 1 project
+5. **Brand-neutral**: pattern phải express được mà không cần real domain / brand acronym / customer name / identifying stack combo. Nếu giữ ví dụ thật, phải scrub thành `example.com` / `acme-*` / `Site A` / `Site B`. Đây là điều kiện BẮT BUỘC khi skill public — leaked customer info = breach trust + có thể vi phạm NDA.
 
 ❌ Anti-pattern (insight kém):
 - "13 page của Site X thiếu H1" — quá specific, project memory chứ không skill
 - "Đôi khi MCP fail, restart" — không root cause, không reproduction
 - "Dùng Rank Math thay Yoast" — opinion không có data backing
+- "Site `<real-domain>.com` connector PKM thiếu endpoint" — leak customer / project name → re-write với generic placeholder
 
 ✅ Pattern tốt:
 - "Astra entry-title H1 duplicate khi `_wp_page_template != 'elementor_canvas'`. Reproduce: tạo page qua REST không set template → check `<h1 class=entry-title>` xuất hiện. Fix: `update_post_meta(_wp_page_template, 'elementor_canvas')`. Reusable cho mọi site Astra + Elementor."
+
+### 5b. Pre-publish brand-leak scan (BẮT BUỘC trước khi commit lên repo public)
+
+Trước khi `git push`, grep toàn bộ skill files cho identifier-class strings có thể leak:
+
+```bash
+cd ~/.claude/skills/wp-stack
+
+# Known-safe domains: placeholders + 3rd-party docs + standards URIs
+ALLOW='example\.com|example\.org|site\.com|acme\.com|<site>'   # placeholders
+ALLOW="$ALLOW"'|github\.com|schema\.org|wordpress\.org|w3\.org|sitemaps\.org'
+ALLOW="$ALLOW"'|wpastra\.com|elementor\.com|advancedcustomfields\.com|rankmath\.com'
+ALLOW="$ALLOW"'|claude\.com|anthropic\.com|keepachangelog\.com|semver\.org'
+ALLOW="$ALLOW"'|brevo\.com|sendgrid\.com|mailgun\.com|cloudflare\.com'
+ALLOW="$ALLOW"'|api\.replicate\.com|googleapis\.com|gstatic\.com|cdnjs\.cloudflare\.com'
+
+# 1. Any real domain in skill content (only placeholders + 3rd-party allowed)
+grep -nrE "https?://[a-z0-9.-]+\.(com|vn|net|org|id\.vn|io)" \
+  references/ workflows/ templates/ SKILL.md CHANGELOG.md \
+  | grep -vE "$ALLOW"
+
+# 2. Brand acronym / customer name — populate from your real project list,
+#    then run before each push. Example pattern (replace with your slugs):
+LEAK='\b(acmecorp|client-a|client-b)\b'   # ← edit per your portfolio
+grep -nriE "$LEAK" references/ workflows/ CHANGELOG.md SKILL.md
+# Append new acronym/slug whenever you distill from a new project.
+
+# 3. Connector / project slug must be neutral
+grep -nrE "[a-z]+-(vn|com|net)-(global|elementor)" references/ workflows/ \
+  | grep -vE "acme-(global|elementor)|<site>-(global|elementor)|<site-slug>"
+
+# 4. Maintainer / team first names should NOT appear in workflow text;
+#    they belong only in README Author section (intentional OSS credit).
+#    Replace the regex with your team's name list.
+grep -nrE "<list-of-team-first-names>" workflows/ references/
+
+# Expect: empty output for all 4 commands.
+# Self-reference exception: the grep pattern itself (this section) will
+# match its own regex strings — that is OK, scrub does not need to
+# rewrite the workflow that documents the scrub.
+```
+
+Nếu có hit → re-edit + re-commit trước khi push. Đây là step 5b vì brand-scrub thường bị quên cho tới khi user phát hiện.
+
+**Recovery khi đã publish leak**:
+1. Edit files local + commit "Scrub brand leaks"
+2. Push commit mới (KHÔNG force-push lên main vì destructive)
+3. Edit GitHub release notes via `gh release edit <tag> --notes "<scrubbed>"`
+4. Note rằng git history vẫn có leak — chỉ scrub được nếu force-push, mà force-push public main là worse risk
+5. Lessons-learn: thêm pattern vào step 5b grep cho session sau
 
 ### 6. Update CHANGELOG.md
 
