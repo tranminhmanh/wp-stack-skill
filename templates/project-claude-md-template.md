@@ -1,120 +1,121 @@
-# Project: [Tên site]
+# Project: [Site name]
 
-> Template này paste vào `<project-root>/CLAUDE.md` cho mỗi WordPress project. Điền đầy đủ trước khi nhờ Claude làm việc gì liên quan deploy/SSH.
+> Paste this template into `<project-root>/CLAUDE.md` for every WordPress project. Fill it in fully before asking Claude to do any deploy / SSH work.
 
 ## Brand
-- **Domain**: 
-- **Industry**: 
+- **Domain**:
+- **Industry**:
 - **Target audience**: B2B / B2C / both
-- **Tone**: 
-- **Primary color**: 
-- **Secondary color**: 
-- **Background color**: 
-- **Font primary**: Be Vietnam Pro / Inter / Roboto / khác
-- **Font heading**: (nếu khác primary)
+- **Tone**:
+- **Primary color**:
+- **Secondary color**:
+- **Background color**:
+- **Font primary**: Inter / Roboto / Be Vietnam Pro / other
+- **Font heading**: (if different from primary)
 
-## Hosting (BẮT BUỘC điền nếu có deploy/SSH)
+## Hosting (REQUIRED if there's any deploy / SSH work)
 
-- **Provider**: CloudPanel VPS / SiteGround / Cloudways / Hostinger / Other
-- **IP/Hostname**: 
+- **Provider**: CloudPanel VPS / SiteGround / Cloudways / Hostinger / other
+- **IP / Hostname**:
 - **SSH access**:
-  - Method: SSH key / password / panel only / KHÔNG có
-  - Alias (trong ~/.ssh/config): 
-  - User: 
+  - Method: SSH key / password / panel-only / NO access
+  - Alias (in `~/.ssh/config`):
+  - User:
   - Port: 22 / custom
-- **Site path**: (vd: `/home/user/htdocs/site.com` hoặc `/var/www/site.com`)
+- **Site path**: (e.g. `/home/user/htdocs/site.com` or `/var/www/site.com`)
 - **Database**:
   - Type: MySQL / MariaDB / PostgreSQL
   - Host: localhost / remote
   - Port: 3306 / 5432 / custom
-  - Name: 
-- **PHP version**: 
-- **Production URL**: 
-- **Staging URL**: (nếu có)
+  - Name:
+- **PHP version**:
+- **Production URL**:
+- **Staging URL**: (if any)
 
 ## MCP setup
 
-- **MCP endpoint**: `https://<staging hoặc dev>/wp-json/mcp/elementor-mcp-server`
-- **Application Password label**: (vd "Claude MCP")
-- **App password**: (LƯU TRONG PASSWORD MANAGER, không paste vào đây)
+- **MCP endpoint**: `https://<staging or dev>/wp-json/mcp/elementor-mcp-server`
+- **Application Password label**: (e.g. "Claude MCP")
+- **App password**: (KEEP IN A PASSWORD MANAGER, do NOT paste here)
 
-## Stack đặc biệt site này
+## Site-specific stack
 
-(Liệt kê plugin/tool ngoài stack chuẩn nếu có. Ví dụ:)
-- WooCommerce + plugin payment Việt
-- LearnDash cho course
-- BuddyBoss cho community
-- JetEngine cho relationship CPT
-- Polylang / Meep AI Translator cho song ngữ
+(List any plugin / tool outside the standard stack. For example:)
+- WooCommerce + a regional payment plugin
+- LearnDash for courses
+- BuddyBoss for community
+- JetEngine for relationship CPTs
+- Polylang / Meep AI Translator for bilingual
 
-## CPT & ACF (nếu có)
+## CPT & ACF (if any)
 
 - CPT: branch, product, project, ...
 - Field group export: `templates/acf/<project>.json`
 
-## Skill apply
+## Skills to apply
 
 - wp-stack
-- (skill khác nếu cần)
+- (other skills if needed)
 
-## Constraints / Notes
+## Constraints / notes
 
-(Bất cứ gì Claude cần biết:)
+(Anything Claude should know:)
 - Client preferences
 - Deadline
-- Đã làm tới đâu
-- Plugin nào cấm cài
-- Style guide đặc biệt
-- Quy ước commit/branch nếu có git
+- Progress so far
+- Plugins explicitly forbidden
+- Special style guide
+- Commit / branch conventions if using git
 
-## Workflow đã chọn
+## Workflow choices
 
-- Vibe coding via Claude Code: Yes/No
-- Theme Builder loop: Yes/No (nếu có CPT)
+- Vibe coding via Claude Code: Yes / No
+- Theme Builder loop: Yes / No (if there's a CPT)
 - Multilingual: No / Polylang / Meep / WPML
-- E-commerce: No / WooCommerce / khác
-- Membership: No / MemberPress / khác
+- E-commerce: No / WooCommerce / other
+- Membership: No / MemberPress / other
 
 ---
 
-## Ví dụ điền đầy đủ (LIVESFX)
+## Example fully filled in
 
 ```markdown
-# Project: LIVESFX
+# Project: ACME Corp
 
 ## Brand
-- Domain: livesfx.vn
-- Industry: SFX cho event (B2B premium)
-- Target: event organizer, concert promoter, wedding planner cao cấp
-- Tone: dark cinematic, asymmetric, motion-friendly
-- Primary: #FF4500
-- Secondary: #FFD700
-- Background: #0A0A0A
-- Font primary: Be Vietnam Pro
+- Domain: acme.com
+- Industry: B2B SaaS for logistics
+- Target: enterprise logistics managers
+- Tone: professional, data-driven, trustworthy
+- Primary: #0A2540
+- Secondary: #00A3B5
+- Background: #F8FAFC
+- Font primary: Inter
+- Font heading: Inter (weight 700)
 
 ## Hosting
 - Provider: VPS Debian 12 + CloudPanel
-- IP: [từ CLAUDE.md global]
-- SSH alias: manhkyi2
-- Site path: /home/livesfx/htdocs/livesfx.vn
+- IP: [from global CLAUDE.md]
+- SSH alias: acme-prod
+- Site path: /home/acme/htdocs/acme.com
 - Database: MySQL standard (CloudPanel managed)
 - PHP version: 8.2
-- Production URL: https://livesfx.vn
-- Staging URL: https://staging.livesfx.vn
+- Production URL: https://acme.com
+- Staging URL: https://staging.acme.com
 
 ## MCP setup
-- Endpoint: https://staging.livesfx.vn/wp-json/mcp/elementor-mcp-server
+- Endpoint: https://staging.acme.com/wp-json/mcp/elementor-mcp-server
 - App password label: Claude Code
 
-## Stack đặc biệt
-- (none — stack chuẩn đủ)
+## Site-specific stack
+- (none — standard stack is enough)
 
-## Skill apply
+## Skills
 - wp-stack
 
 ## Workflow
 - Vibe coding via Claude Code: Yes
-- Theme Builder loop: Yes (cho portfolio dự án)
-- Multilingual: No (chỉ Vietnamese)
+- Theme Builder loop: Yes (for case-study CPT)
+- Multilingual: No (English only)
 - E-commerce: No
 ```

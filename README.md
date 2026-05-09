@@ -1,119 +1,184 @@
-# wp-stack — WordPress Stack Skill
+# wp-stack-skill
 
-Skill universal cho mọi WordPress project, theo stack: **Astra Free + Elementor Pro + ACF + msrbuilds/elementor-mcp**.
+> **Claude Code skill** for building, fixing, optimizing, and debugging WordPress sites with the standard stack: **Astra Free + Elementor Pro + ACF + msrbuilds/elementor-mcp**.
 
-## Triết lý
+Battle-tested across 3 production WordPress sites. 24+ universal patterns, 4 end-to-end workflows, 3 PHP recipes — all extracted from real production debugging sessions, not theory.
 
-```
-Skill = WHAT (kiến thức universal)
-CLAUDE.md project = WHERE (host, path, brand cụ thể)
-```
+---
 
-Skill KHÔNG chứa hardcode host/SSH/path. Mọi thông tin specific đọc từ:
-- `~/.claude/CLAUDE.md` — global về user
-- `<project-root>/CLAUDE.md` — project hiện tại
+## Why this skill
 
-## Cấu trúc
+Building a WordPress site with Claude Code goes from "AI tries random things" → "AI follows conventions" the moment a skill is loaded. This skill encodes:
 
-```
-wp-stack/
-├── SKILL.md                          ← Entry point (Claude đọc đầu tiên)
-├── README.md                         ← File này
-├── references/                       ← Knowledge base
-│   ├── stack.md                      ← Stack chuẩn
-│   ├── design-tokens.md              ← Spacing/typography universal
-│   ├── elementor-mcp.md              ← MCP cheatsheet
-│   ├── widget-mapping.md             ← HTML → widget
-│   ├── responsive.md                 ← Breakpoint rules
-│   ├── astra-customizer.md           ← Astra settings
-│   ├── seo-checklist.md              ← Rank Math setup
-│   ├── performance.md                ← Speed optimization
-│   ├── security.md                   ← Hardening checklist
-│   ├── deployment.md                 ← Deploy workflow generic
-│   ├── vietnamese.md                 ← VN-specific concerns
-│   └── pitfalls.md                   ← Bẫy thường gặp
-├── workflows/                        ← Step-by-step procedures
-│   ├── new-site-setup.md             ← Setup site mới A-Z
-│   ├── add-cpt.md                    ← Tạo Custom Post Type
-│   ├── theme-builder-loop.md         ← Build template loop
-│   └── migrate-staging-prod.md       ← Migrate workflow
-└── templates/                        ← Reusable assets
-    ├── project-claude-md-template.md ← Template cho project CLAUDE.md
-    ├── elementor/                    ← Elementor JSON templates (build sau)
-    ├── acf/                          ← ACF field group exports (build sau)
-    └── snippets/                     ← Code snippets (build sau)
-```
+- **What works** — stack choices that play well together
+- **What breaks** — pitfalls discovered the hard way (with fixes)
+- **How to scale** — clone-transform pattern for bulk-building 8 similar pillar pages in 30 minutes instead of 6 hours
+- **How to verify** — every write op has a paired verify command, because MCP returning `true` does not mean the page renders
 
-## Cài đặt
+Sample patterns inside:
 
-### Trên máy local (Mac/Windows/Linux)
+- ⚠️ **CRITICAL bugs**: `_elementor_edit_mode` empty → wpautop strips classes; Elementor kit `_elementor_page_settings` PHP-serialized vs JSON; Pro Form `add-form` does not set `custom_id` (silent fail for weeks); `page_for_posts` overrides Elementor render
+- 🎨 **CSS / V4 layout traps**: applying CSS grid to `<section>` (squeeze), `width` setting persisting across container_type change, `_css_classes` MCP unreliable → target by element ID
+- 🚀 **Bulk-build workflows**: clone + transform PHP pattern (95% time saved), 4-tier OG image coverage strategy ($0.175 for 52 pages), 3-tier SEO audit (PHP backend + Bash frontend + Python analyze)
+- 📨 **End-to-end recipes**: SMTP relay via Brevo on budget VPS where port 25 is blocked, SEO Schema 3 types (BreadcrumbList + Service + FAQPage), Astra Free + Elementor Theme Builder bridge mu-plugin
+
+---
+
+## Quick start
+
+### Install
 
 ```bash
-# 1. Clone hoặc copy folder vào ~/.claude/skills/
 mkdir -p ~/.claude/skills
-cp -r wp-stack ~/.claude/skills/
+git clone https://github.com/tranminhmanh/wp-stack-skill.git ~/.claude/skills/wp-stack
+```
 
-# 2. Verify Claude Code load skill
+Verify Claude Code loads it:
+
+```
 claude
 > /skills list
 ```
 
-Phải thấy `wp-stack` trong list.
+You should see `wp-stack` in the list.
 
-### Cách dùng cho project mới
+### Use
 
-```bash
-# 1. Tạo CLAUDE.md cho project
-cd ~/projects/<project-name>
-cp ~/.claude/skills/wp-stack/templates/project-claude-md-template.md CLAUDE.md
+Open Claude Code in a WordPress project directory, then trigger naturally:
 
-# 2. Edit CLAUDE.md, điền đầy đủ thông tin brand + hosting
-
-# 3. Mở Claude Code trong project
-claude
-
-# 4. Trigger skill
-> Build landing page hero theo skill wp-stack
+```
+> Build a landing page hero with 3 CTAs using wp-stack.
+> Migrate this site from staging to production.
+> Run an SEO audit on all 52 pages and report critical issues.
+> Bulk-create 8 country pillar pages from this template.
+> Why is my Pro Form silently failing?
 ```
 
-Claude sẽ:
-1. Đọc `CLAUDE.md` project lấy brand/host
-2. Load `SKILL.md` của wp-stack
-3. Load reference files cần thiết
-4. Build theo chuẩn
+The skill auto-loads the relevant reference files based on the task.
 
-## Maintenance
+---
 
-### Mỗi quý
-Review `references/stack.md` — update version plugin/theme.
+## What's inside
 
-### Mỗi project xong
-Phát hiện pattern mới hữu ích → add vào `pitfalls.md` hoặc tạo workflow mới.
-
-### Khi Anthropic/Elementor update lớn
-Review `elementor-mcp.md`, `design-tokens.md`.
-
-### Build template library
-
-Sau khi build trang đầu thành công:
-
-```bash
-# Trong Claude Code session
-> Export hero section page ID 42 thành JSON,
-> save vào ~/.claude/skills/wp-stack/templates/elementor/hero-section.json
+```
+wp-stack/
+├── SKILL.md                          ← Entry point (Claude reads first)
+├── README.md                         ← This file
+│
+├── references/                       ← Knowledge base (12 files)
+│   ├── stack.md                      ← Standard stack and versions
+│   ├── design-tokens.md              ← Spacing / typography / shadows
+│   ├── elementor-mcp.md              ← MCP cheatsheet + widget gotchas
+│   ├── widget-mapping.md             ← HTML element → Elementor widget
+│   ├── responsive.md                 ← Breakpoint rules + container budgets
+│   ├── astra-customizer.md           ← Astra theme settings
+│   ├── seo-checklist.md              ← Rank Math + Schema + OG image
+│   ├── performance.md                ← Speed optimization + cache invalidation
+│   ├── security.md                   ← Hardening checklist
+│   ├── deployment.md                 ← Deploy workflow generic
+│   ├── vietnamese.md                 ← Vietnamese-locale concerns (fonts, slugs, schema)
+│   └── pitfalls.md                   ← 30+ pitfalls with detection + fix
+│
+├── workflows/                        ← Step-by-step procedures (8 files)
+│   ├── new-site-setup.md             ← Set up a new site A → Z
+│   ├── add-cpt.md                    ← Create a Custom Post Type
+│   ├── theme-builder-loop.md         ← Build a Loop template
+│   ├── migrate-staging-prod.md       ← Migrate staging → production
+│   ├── clone-transform-pattern.md    ← Bulk-build N similar pages via PHP transform
+│   ├── og-image-generation.md        ← 4-tier OG image coverage strategy
+│   ├── seo-audit.md                  ← 3-tier SEO audit (PHP + Bash + Python)
+│   └── smtp-relay-setup.md           ← Brevo SMTP relay for budget VPS
+│
+└── templates/                        ← Reusable assets
+    ├── project-claude-md-template.md ← Template for project CLAUDE.md
+    └── snippets/                     ← PHP recipes
+        ├── elementor-data-update.php ← Safe _elementor_data update (Vietnamese-safe)
+        ├── wp-fix.php                ← Token-guarded recovery script (read warnings!)
+        └── og-image-generator.php    ← PHP GD OG image generator + WP attachment integration
 ```
 
-Lần sau build hero mới cho project khác → Claude reference template → build nhanh gấp 5 lần.
+---
 
-## Anti-patterns (bị Claude từ chối)
+## Stack supported
 
-- Đề xuất Divi/WPBakery/Bricks
-- Đề xuất theme khác Astra
-- Cài plugin ngoài stack mà không hỏi
-- Đoán SSH alias/path khi CLAUDE.md không có
-- Run command production không confirm
-- Generate Vietnamese copy không nhắc native review
+| Component | Tool | Version | Note |
+|---|---|---|---|
+| WordPress core | WordPress | 6.8+ | Auto-update minor versions |
+| Theme | Astra | Latest free | NOT Pro |
+| Page builder | Elementor | 3.20+ | Flexbox Containers ON |
+| Page builder Pro | Elementor Pro | 3.20+ | License required |
+| MCP server | msrbuilds/elementor-mcp | v1.4+ | GitHub release |
+| Custom fields | ACF Free | Latest | JetEngine when relationships needed |
+| SEO | Rank Math Free | Latest | NOT Yoast |
+| Cache | WP Rocket / LiteSpeed | Latest | Pick one |
+| Security | Wordfence Free | Latest | + 2FA admin |
+| Backup | UpdraftPlus | Latest | + provider snapshots |
+| Email | WP Mail SMTP | Latest | + Brevo / SendGrid / Mailgun |
+
+Full list with rationale: [`references/stack.md`](references/stack.md).
+
+---
+
+## When NOT to use this skill
+
+- You are using a different page builder (Divi, WPBakery, Bricks, Beaver Builder)
+- You are using a different theme (Hello, GeneratePress, OceanWP, Kadence)
+- Your site is mostly Gutenberg blocks — this skill assumes Elementor as the primary builder
+- You need WooCommerce-specific guidance (covered minimally; consider a dedicated WooCommerce skill)
+
+---
+
+## How to file project-specific info
+
+Every project keeps its own `CLAUDE.md` with brand / host / path / DB info. Template:
+
+```bash
+cp ~/.claude/skills/wp-stack/templates/project-claude-md-template.md \
+   ~/projects/<project-name>/CLAUDE.md
+# Then edit and fill in.
+```
+
+The skill **reads** project `CLAUDE.md` for brand and hosting, then applies universal patterns. It never hardcodes project-specific info inside itself.
+
+---
+
+## Versioning
+
+This project follows [Semantic Versioning](https://semver.org/). Current version: see [`CHANGELOG.md`](CHANGELOG.md).
+
+- **Major bump**: skill structure changes that break existing project `CLAUDE.md` references
+- **Minor bump**: new workflows, references, or major pattern additions
+- **Patch bump**: corrections, clarifications, single-pattern additions
+
+---
+
+## Contributing
+
+Contributions welcome — especially new patterns from production debugging. See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the workflow.
+
+If you find a security issue (especially in the `wp-fix.php` recovery template), please follow [`SECURITY.md`](SECURITY.md) instead of opening a public issue.
+
+---
 
 ## License
 
-Internal use. Không public — chứa workflow nội bộ.
+MIT — see [`LICENSE`](LICENSE).
+
+---
+
+## Disclaimer
+
+WordPress, Elementor, Astra, ACF, Rank Math, WP Rocket, LiteSpeed, Cloudflare, Wordfence, and other product names are trademarks of their respective owners. This project is not affiliated with, endorsed by, or sponsored by any of these projects. All patterns are extracted from public documentation and our own production debugging.
+
+---
+
+## Acknowledgments
+
+Patterns extracted from production debugging on 3 WordPress sites (B2B logistics, food retail, event SFX). Special thanks to the upstream projects whose documentation and source code informed many of these patterns:
+
+- [Elementor](https://github.com/elementor/elementor)
+- [Astra Theme](https://wpastra.com/)
+- [Advanced Custom Fields](https://www.advancedcustomfields.com/)
+- [msrbuilds/elementor-mcp](https://github.com/msrbuilds/elementor-mcp)
+- [Rank Math](https://rankmath.com/)
+- [WP Mail SMTP](https://wordpress.org/plugins/wp-mail-smtp/)

@@ -1,57 +1,59 @@
-# Vietnamese-Specific Concerns
+# Vietnamese-Locale Concerns
+
+Concerns specific to Vietnamese-language WordPress sites. The same patterns apply to other diacritic-heavy languages (Polish, Czech, Turkish, etc.) — adjust the locale-specific bits.
 
 ## Database
 
-- MUST use `utf8mb4_unicode_ci` collation (KHÔNG phải `utf8`)
-- Check: 
+- MUST use `utf8mb4_unicode_ci` collation (NOT `utf8`)
+- Check:
 ```sql
 SHOW VARIABLES LIKE 'character_set%';
 SHOW VARIABLES LIKE 'collation%';
 ```
 
-## Fonts với Vietnamese subset
+## Fonts with Vietnamese subset
 
-Đã test OK:
-- **Be Vietnam Pro** (recommend cho mọi project)
-- Inter (vietnamese subset)
+Tested OK:
+- **Be Vietnam Pro** (recommended for any Vietnamese project)
+- Inter (Vietnamese subset)
 - Roboto
 - IBM Plex Sans Vietnamese
 - Noto Sans Vietnamese
 - Manrope
 
-NOT OK (thiếu dấu):
-- Custom font upload không có Vietnamese subset
-- Một số Google Fonts older (Lora, Merriweather) — check trước
+NOT OK (missing diacritics):
+- Custom font upload without a Vietnamese subset
+- Some older Google Fonts (Lora, Merriweather) — verify before use
 
-## Astra font load locally
+## Astra local font cache
 
 `Customize → Performance → Load Google Fonts Locally: ON`
 
-⚠️ Astra cache local có thể thiếu Vietnamese subset. Fix:
+⚠️ Astra's local cache may miss the Vietnamese subset. Fix:
 1. Astra → Performance → Flush local font cache
-2. Re-load page
+2. Reload page
 3. Inspect → font-family Be Vietnam Pro
-4. Network tab → font file load đủ Vietnamese chars
+4. Network tab → font file loads with all Vietnamese chars
 
-Nếu vẫn lỗi → Disable local fonts, dùng Google Fonts CDN.
+If still broken → disable local fonts, use Google Fonts CDN.
 
-## Slug URL
+## Slug URLs
 
-QUY TẮC: Slug KHÔNG dấu, dùng kebab-case.
+RULE: slugs are diacritic-free, kebab-case.
 - ✅ `/dich-vu-phao-hoa/`
 - ✅ `/banh-mi-cha/`
 - ❌ `/dịch-vụ-pháo-hoa/`
 - ❌ `/bánh-mì-chả/`
 
-WordPress auto-convert nếu set permalink đúng. Nếu không, fix:
+WordPress auto-converts if permalinks are set correctly. If not:
 - Tools → Convert non-Latin chars in URL
 
-## Meta description Vietnamese
+## Vietnamese meta description
 
-OK dùng dấu, KHÔNG cần unicode escape.
-Length: 150-160 ký tự (Vietnamese ~30% dài hơn English vì dấu).
+Diacritics OK in meta description, no Unicode escape needed.
+Length: 150–160 chars (Vietnamese is ~30% longer than English due to diacritics).
 
-## Schema markup tiếng Việt
+## Vietnamese in schema markup
 
 ```json
 {
@@ -66,35 +68,45 @@ Length: 150-160 ký tự (Vietnamese ~30% dài hơn English vì dấu).
 }
 ```
 
-OK dấu trong JSON, đảm bảo file UTF-8 BOM-less.
+Diacritics OK in JSON. Make sure the file is UTF-8 BOM-less.
 
 ## Translation strategy
 
-- Polylang Free: 2 ngôn ngữ, site đơn giản
-- **Meep AI Translator**: Elementor-heavy (đọc JSON Elementor không vỡ layout)
-- WPML: AVOID (nặng, chậm với Elementor)
+- **Polylang Free**: 2 languages, simple sites
+- **Meep AI Translator**: Elementor-heavy sites (reads Elementor JSON without breaking layout)
+- **WPML**: AVOID (heavy and slow with Elementor)
 
 ## Copy generation
 
-⚠️ AI generate Vietnamese copy thường:
-- Văn phong gượng, máy móc
-- Dùng từ Hán-Việt không cần thiết
-- Sai sắc thái B2B vs B2C
-- Sai địa phương (Sài Gòn vs Hà Nội voice)
+⚠️ AI-generated Vietnamese copy often has:
+- Stiff, machine-like tone
+- Unnecessary Sino-Vietnamese vocabulary
+- Wrong B2B vs B2C register
+- Wrong regional voice (Saigon vs Hanoi)
 
-→ AI làm DRAFT, copywriter Việt rewrite hero/CTA bắt buộc.
+→ Use AI for DRAFT only. A native Vietnamese copywriter MUST rewrite hero / CTA.
 
-## Phone, address, currency format
+## Phone, address, currency formats
 
-- Phone: `0901 234 567` hoặc `+84 901 234 567`
-- Date: `dd/mm/yyyy` (KHÔNG mm/dd/yyyy)
-- Currency: `1.000.000 ₫` (dấu chấm phân cách, ₫ phía sau)
-- Time: 24h format `14:30` thay vì `2:30 PM`
+- Phone: `0xxx xxx xxx` or `+84 xxx xxx xxx`
+- Date: `dd/mm/yyyy` (NOT mm/dd/yyyy)
+- Currency: `1.000.000 ₫` (dots as thousand separators, ₫ after the number)
+- Time: 24h format `14:30` instead of `2:30 PM`
 
 ## Vietnamese SEO
 
-- Google VN crawl mobile UA
-- LocalBusiness schema có `addressCountry: "VN"`
-- hreflang: `vi-VN` cho Vietnamese, `en-US` cho English version
+- Google VN crawls with the mobile UA
+- LocalBusiness schema needs `addressCountry: "VN"`
+- hreflang: `vi-VN` for Vietnamese, `en-US` for the English version
 - Search Console: target country Vietnam
-- Submit sitemap qua Google Search Console version vi.google.com
+- Submit sitemap via the Google Search Console version at `vi.google.com`
+
+## Vietnamese title length: 40–55 chars
+
+Vietnamese in UTF-8 takes 1.5–2 bytes per char (đ, ă, ê, ơ...), but Google SERP counts by **visual character width**. A title of 70+ chars gets cut mid-word. Target: 40–55 chars Vietnamese (vs 50–60 English).
+
+Format: `[Main keyword] — [USP highlight] | Brand`
+
+Examples:
+- ✅ "Vận chuyển VN-Hàn Quốc — Cước cạnh tranh | Brand" (49 chars)
+- ❌ "Vận chuyển container Việt Nam đi Hàn Quốc — Báo giá miễn phí trong 4 giờ" (74 chars, SERP truncates)

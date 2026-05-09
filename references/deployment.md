@@ -1,34 +1,34 @@
 # Deployment Workflow
 
-⚠️ **KHÔNG hardcode VPS IP/SSH alias/path trong file này.** Mọi thông tin specific đọc từ CLAUDE.md project.
+⚠️ **Do NOT hardcode VPS IP / SSH alias / paths in this file.** Read project-specific information from the project `CLAUDE.md`.
 
-## Pattern an toàn
+## Safe pattern
 
-Trước khi deploy, **đọc CLAUDE.md project** lấy:
-- Provider (CloudPanel VPS / SiteGround / Cloudways / Hostinger / khác)
-- SSH access method (key/password/panel-only)
+Before deploying, **read the project `CLAUDE.md`** to get:
+- Provider (CloudPanel VPS / SiteGround / Cloudways / Hostinger / other)
+- SSH access method (key / password / panel-only)
 - Site path
-- Database type/host/port/name
+- Database type / host / port / name
 - Staging URL
 
-Nếu CLAUDE.md thiếu thông tin → HỎI user, KHÔNG đoán.
+If `CLAUDE.md` is missing information → ASK the user, do not guess.
 
 ## Workflow staging → production
 
-### Cách 1: WP Migrate Pro (recommended)
+### Option 1: WP Migrate Pro (recommended)
 
-1. Trên staging: Tools → WP Migrate → Export
-2. Chọn Push to remote site
+1. On staging: Tools → WP Migrate → Export
+2. Pick "Push to remote site"
 3. Target: production URL + secret key
 4. Find/replace URL: `<staging-url>` → `<prod-url>`
 5. Push DB + files
 
-### Cách 2: Manual qua SSH
+### Option 2: Manual via SSH
 
 ```bash
-# 1. Backup production trước (đọc path từ CLAUDE.md)
-ssh <alias từ CLAUDE.md>
-cd <site-path từ CLAUDE.md>
+# 1. Backup production first (read path from CLAUDE.md)
+ssh <alias from CLAUDE.md>
+cd <site-path from CLAUDE.md>
 tar czf /tmp/backup-$(date +%Y%m%d).tar.gz .
 mysqldump -u <user> -p <db> > /tmp/db-$(date +%Y%m%d).sql
 
@@ -44,35 +44,35 @@ wp search-replace '<staging-url>' '<prod-url>' --skip-columns=guid
 wp cache flush
 ```
 
-### Cách 3: Provider-specific
+### Option 3: Provider-specific
 
 - **SiteGround**: Site Tools → Dev → WordPress Migrator
 - **Cloudways**: Application Management → Clone App
 - **Hostinger**: hPanel → File Manager + DB tools
-- **CloudPanel**: SSH manual (cách 2) hoặc snapshot
+- **CloudPanel**: SSH manual (option 2) or snapshot
 
 ## Pre-deploy checklist
 
 - [ ] Backup production DB + files
-- [ ] Test trên staging full user flow
-- [ ] Lighthouse score staging ≥85 mobile
-- [ ] No PHP errors trong wp-content/debug.log
-- [ ] Form submission test thành công
+- [ ] Test the full user flow on staging
+- [ ] Lighthouse mobile ≥85 on staging
+- [ ] No PHP errors in `wp-content/debug.log`
+- [ ] Form submission test succeeds
 - [ ] All images load, no 404
-- [ ] SSL valid, mixed content cleared
-- [ ] Sitemap regenerate
-- [ ] Search Console submit sitemap mới
-- [ ] Google Tag Manager track event đúng
+- [ ] SSL valid, no mixed content
+- [ ] Sitemap regenerated
+- [ ] Submit new sitemap in Search Console
+- [ ] Google Tag Manager fires events correctly
 
 ## Post-deploy
 
 - Clear cache: WP Rocket + Cloudflare + LiteSpeed
-- Test 5 page chính trên 3 device (375/768/1280)
-- Submit Search Console "Request indexing"
-- Monitor uptime (UptimeRobot) 24h sau deploy
-- Check Google Analytics có receive event không
+- Test 5 main pages on 3 devices (375 / 768 / 1280)
+- Submit "Request indexing" in Search Console
+- Monitor uptime (UptimeRobot) for 24h
+- Check Google Analytics is receiving events
 
-## Rollback nếu hỏng
+## Rollback if broken
 
 ```bash
 ssh <alias>
@@ -83,78 +83,78 @@ mysql -u <user> -p <db> < /tmp/db-YYYYMMDD.sql
 wp cache flush
 ```
 
-## Bẫy hosting thường gặp
+## Common hosting pitfalls
 
 ### CloudPanel
-- PHP-FPM crash khi memory limit thấp → wp-config tăng 512M + CloudPanel PHP Settings
-- SSL Let's Encrypt renew fail → check DNS A record + port 80 mở
-- Disk full do log → truncate debug.log hoặc disable WP_DEBUG_LOG
+- PHP-FPM crashes on low memory limit → wp-config bumps to 512M + CloudPanel PHP Settings
+- Let's Encrypt SSL renewal fails → check DNS A record + port 80 open
+- Disk full from logs → truncate `debug.log` or disable `WP_DEBUG_LOG`
 
 ### SiteGround
-- Cache aggressive → vào Site Tools tắt Dynamic Cache khi develop
-- SSH access cần generate key qua Site Tools → Dev → SSH Keys
-- Migration plugin có SiteGround Migrator riêng (recommended)
+- Aggressive cache → in Site Tools, disable Dynamic Cache while developing
+- SSH access requires generating a key in Site Tools → Dev → SSH Keys
+- Migration plugin is SiteGround Migrator (recommended)
 
 ### Cloudways
-- Clone App nhanh nhưng tạo URL random → cần map domain sau
-- Varnish cache mạnh → Application → Manage Services → Purge Varnish
+- Clone App is fast but creates a random URL → map domain afterwards
+- Strong Varnish cache → Application → Manage Services → Purge Varnish
 
 ### Hostinger
-- LiteSpeed cache built-in → dùng LSCache plugin thay WP Rocket
-- File Manager Hostinger có browser-based SSH (Web Terminal)
+- LiteSpeed cache built-in → use the LSCache plugin instead of WP Rocket
+- Hostinger File Manager has browser-based SSH (Web Terminal)
 
-## Khi user dùng host KHÔNG có SSH
+## When the user has no SSH access
 
-(Vd: shared hosting cũ, client không cấp SSH access)
+(e.g. legacy shared hosting, client did not grant SSH)
 
-→ KHÔNG đề xuất MCP qua SSH workflow.
-→ Workflow thay thế: WP Migrate Pro UI, UpdraftPlus restore, Duplicator.
-→ MCP qua HTTP vẫn chạy được (chỉ cần REST API endpoint), nhưng deploy migrate phải qua plugin UI.
+→ Do NOT propose an MCP-via-SSH workflow.
+→ Alternatives: WP Migrate Pro UI, UpdraftPlus restore, Duplicator.
+→ MCP via HTTP still works (only needs the REST API endpoint), but deploy / migrate has to go through the plugin UI.
 
-## Verify docroot trước khi deploy (addon domain)
+## Verify docroot before deploying (addon domain)
 
-Shared hosting (cPanel/AZDIGI/Hostinger) — addon domain KHÔNG cùng docroot với main domain. Vd: main = `/home/user/public_html/`, addon `chacavungtau.vn` = `/home/user/chacavungtau.vn/`.
+Shared hosting (cPanel / Hostinger / similar) — addon domains do NOT share the same docroot as the main domain. Example: main = `/home/user/public_html/`, addon `example.com` = `/home/user/example.com/`.
 
-Đoán docroot = bug. Verify:
+Guessing the docroot = bug. Verify:
 ```bash
 curl -H "$CP_AUTH" "$CP_URL/LangPHP/php_get_vhost_versions"
-# trả docroot per domain — đối chiếu với CLAUDE.md
+# returns the docroot per domain — cross-reference with CLAUDE.md
 ```
 
-Hoặc check Domain Manager UI → Document Root column.
+Or check the Domain Manager UI → Document Root column.
 
-## Shared host WAF (Imunify360) chặn `.php` upload
+## Shared host WAF (e.g. Imunify360) blocks `.php` upload
 
-Imunify360 trên AZDIGI/shared host scan content khi upload qua cPanel API. File `.php` chứa pattern nghi malware (`eval`, `base64_decode`, `system()`, `exec()`) → 403 dù credentials đúng.
+Imunify360 on shared hosts scans content during cPanel API uploads. A `.php` file containing patterns it considers malware (`eval`, `base64_decode`, `system()`, `exec()`) returns 403 even with correct credentials.
 
 **Workarounds**:
-- Upload `.php.txt` trước → rename qua File Manager UI (UI bypass scan)
-- Tách logic nguy hiểm ra file riêng, include từ stub clean
-- Thay `eval` bằng `call_user_func`, encode khác cách (string concat) — KHÔNG khuyên cho production
+- Upload `.php.txt` first → rename via the File Manager UI (UI bypasses the scan)
+- Split risky logic into a separate file, include from a clean stub
+- Replace `eval` with `call_user_func`, encode differently (string concat) — NOT recommended for production
 
-Detection: response body có "Imunify360" / "AI-Bolit" → chính nó.
+Detection: response body contains "Imunify360" / "AI-Bolit" → confirmed.
 
 ## cPanel Fileman API endpoints vary by host
 
-Một số hosting strip endpoint nguy hiểm. AZDIGI shared host chỉ có:
+Some hosts strip dangerous endpoints. A typical shared host only exposes:
 - ✅ `list_files`, `get_file_content`, `save_file_content`, `mkdir`, `upload_files`
 - ❌ `delete_files`, `rename`, `move`, `empty_file`
 
 **Workarounds**:
-- "Delete" file = overwrite với stub (`<?php // removed`)
-- "Rename" = read old → write new path → stub old
+- "Delete" a file = overwrite with a stub (`<?php // removed`)
+- "Rename" = read old → write new path → stub the old one
 - "Move" = same pattern
 
-Test endpoints trước khi viết deploy script:
+Test endpoints before writing the deploy script:
 ```bash
 curl -H "$CP_AUTH" "$CP_URL/Fileman/<endpoint>?dir=&file=" | jq .errors
 ```
 
-## Docker `php.ini` bind-mount cho upload size
+## Docker `php.ini` bind-mount for upload size
 
-Default `upload_max_filesize = 2M` không đủ cho Elementor Pro zip (~10M), media library, plugin uploads.
+Default `upload_max_filesize = 2M` is not enough for Elementor Pro zip (~10M), media library, plugin uploads.
 
-Bind mount riêng (không edit container's php.ini global):
+Bind-mount a separate ini (do not edit the container's global `php.ini`):
 ```yaml
 # docker-compose.yml
 volumes:
@@ -169,19 +169,19 @@ memory_limit = 512M
 max_execution_time = 300
 ```
 
-`docker compose up -d --force-recreate <service>` để reload.
+`docker compose up -d --force-recreate <service>` to reload.
 
-## `opcache_reset()` mandatory sau mỗi mu-plugin edit
+## `opcache_reset()` mandatory after every mu-plugin edit
 
-PHP-FPM/Apache caches bytecode trong shared memory. Edit mu-plugin → opcache vẫn chạy version cũ. Mất 30–60 phút loop confusion nếu không nhớ.
+PHP-FPM / Apache caches bytecode in shared memory. Edit a mu-plugin → opcache still runs the old version. Easy to lose 30–60 minutes in a confusion loop if you forget.
 
 ```bash
 docker exec <container> php -r 'opcache_reset();'
-# Hoặc qua web (cần file riêng):
+# Or via the web (needs a separate file):
 curl https://<site>/opcache-reset.php?token=<TOKEN>
 ```
 
-Pattern web reset (file: `wp-content/mu-plugins/opcache-reset.php`):
+Web-reset pattern (file: `wp-content/mu-plugins/opcache-reset.php`):
 ```php
 <?php
 if (($_GET['token'] ?? '') === 'STRONG-TOKEN') {
@@ -192,11 +192,11 @@ if (($_GET['token'] ?? '') === 'STRONG-TOKEN') {
 
 ## Bash heredoc + SSH escape hell
 
-Outer `"..."` của ssh interferes với inner `<<'PHPEOF'` heredoc backslash escaping. Triple-escaped backslashes `\\\\\\` become unpredictable across shell layers.
+The outer `"..."` of `ssh` interferes with the inner `<<'PHPEOF'` heredoc backslash escaping. Triple-escaped backslashes `\\\\\\` become unpredictable across shell layers.
 
-**Fix**: KHÔNG inline PHP qua ssh heredoc. Thay vào đó:
+**Fix**: do NOT inline PHP via ssh heredoc. Instead:
 ```bash
-# 1. Write PHP local
+# 1. Write PHP locally
 cat > /tmp/script.php <<'EOF'
 <?php
 require_once '/var/www/html/wp-load.php';
@@ -210,13 +210,13 @@ scp /tmp/script.php user@host:/tmp/
 ssh user@host 'docker cp /tmp/script.php <container>:/tmp/ && docker exec <container> php /tmp/script.php'
 ```
 
-Avoid all shell escape layering.
+Avoid all shell-escape layering.
 
-## REST API response capture safety (Vietnamese UTF-8)
+## REST API response capture safety (Vietnamese / non-ASCII UTF-8)
 
-Bash subshell substitution `resp=$(curl ...)` corrupt control characters trong Vietnamese UTF-8 response. `jq <<< "$resp"` fail "Invalid string: control characters from U+0000 through U+001F".
+Bash subshell substitution `resp=$(curl ...)` corrupts control characters in non-ASCII UTF-8 responses. `jq <<< "$resp"` fails with `Invalid string: control characters from U+0000 through U+001F`.
 
-**Fix**: Tee response ra file trước khi parse, KHÔNG pipe qua bash variable:
+**Fix**: tee the response to a file before parsing, do NOT pipe through a bash variable:
 ```bash
 # WRONG
 resp=$(curl -u "$WP_USER:$WP_PASS" "$WP_SITE/wp-json/wp/v2/media")
@@ -227,11 +227,11 @@ curl -u "$WP_USER:$WP_PASS" "$WP_SITE/wp-json/wp/v2/media" -o /tmp/resp.json
 jq -r '.[].id' /tmp/resp.json
 ```
 
-Áp dụng cho mọi REST endpoint trả Vietnamese (Posts, Pages, Media, Terms, Comments).
+Apply to any REST endpoint returning non-ASCII content (Posts, Pages, Media, Terms, Comments).
 
 ## WP media duplicate filename pattern
 
-Upload `image.jpg` mà file cùng tên đã tồn tại (orphan từ upload fail trước) → WP auto-rename `image-1.jpg`. `.source_url` reflect tên mới → code expect filename gốc bị broken.
+Uploading `image.jpg` when a file with the same name already exists (orphan from a failed upload) → WP auto-renames to `image-1.jpg`. `.source_url` reflects the new name → code that expects the original filename breaks.
 
 **Pre-upload check**:
 ```bash
@@ -242,10 +242,10 @@ curl -u "$WP_USER:$WP_PASS" \
 EXISTING=$(jq -r '.[0].id // empty' /tmp/check.json)
 
 if [ -n "$EXISTING" ]; then
-    # Option A: DELETE old (force=true skip trash)
+    # Option A: DELETE old (force=true skips trash)
     curl -u "$WP_USER:$WP_PASS" -X DELETE \
       "$WP_SITE/wp-json/wp/v2/media/$EXISTING?force=true"
-    # Option B: Versioned filename
+    # Option B: versioned filename
     # cp "$FILE" "${FILE%.jpg}-v2.jpg"
 fi
 
@@ -257,23 +257,23 @@ curl -u "$WP_USER:$WP_PASS" -X POST \
   "$WP_SITE/wp-json/wp/v2/media"
 ```
 
-## WP REST hidden useful endpoints
+## WP REST useful (but underdocumented) endpoints
 
-Endpoints không document rõ trong WP core nhưng cực hữu ích cho automation:
+Endpoints not prominently documented in WP core but extremely useful for automation:
 
 | Endpoint | Purpose |
 |---|---|
 | `GET /wp-json/wp/v2/plugins` | List all plugins (admin only) |
-| `POST /wp-json/wp/v2/plugins/{slug}/{slug}` body `{"status":"inactive"}` | Deactivate plugin (recovery khi plugin crash site) |
-| `GET /wp-json/wp/v2/users/me?context=edit` | Full user details + caps (`upload_files`, `unfiltered_html`, ...) — verify trước automation |
-| `POST /wp-json/wp/v2/media/{id}` (acts as PATCH) | Update title/alt_text/caption sau upload |
+| `POST /wp-json/wp/v2/plugins/{slug}/{slug}` body `{"status":"inactive"}` | Deactivate plugin (recovery when a plugin crashes the site) |
+| `GET /wp-json/wp/v2/users/me?context=edit` | Full user details + caps (`upload_files`, `unfiltered_html`, ...) — verify before automation |
+| `POST /wp-json/wp/v2/media/{id}` (acts as PATCH) | Update title / alt_text / caption after upload |
 | `DELETE /wp-json/wp/v2/media/{id}?force=true` | Permanent delete (bypass trash) |
 | `GET /wp-json/` | List all REST namespaces — discover plugin endpoints |
 | `GET /wp-json/wp-abilities/v1/abilities` | List all loaded MCP abilities + schemas |
 
-**Headers hữu ích**:
-- `Cache-Control: no-cache` + `Pragma: no-cache` → bypass LSCache cho 1 request
-- `Content-Disposition: attachment; filename="x.jpg"` → set filename khi upload raw binary
+**Useful headers**:
+- `Cache-Control: no-cache` + `Pragma: no-cache` → bypass LSCache for one request
+- `Content-Disposition: attachment; filename="x.jpg"` → set the filename when uploading raw binary
 - `Authorization: Basic <base64(user:apppassword)>` → App Password auth
 
-**Fallback chain khi 1 path broken**: REST `/wp/v2/media` → `/wp-admin/async-upload.php` → MCP `sideload_image` ability — 3 code paths khác nhau, khác failure modes.
+**Fallback chain when one path is broken**: REST `/wp/v2/media` → `/wp-admin/async-upload.php` → MCP `sideload_image` ability — three different code paths with different failure modes.

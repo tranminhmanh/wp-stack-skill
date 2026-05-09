@@ -1,99 +1,102 @@
 ---
 name: wp-stack
-description: Build, sửa, tối ưu, debug WordPress sites theo stack chuẩn (Astra Free + Elementor Pro + ACF + msrbuilds/elementor-mcp). Kích hoạt khi user yêu cầu việc liên quan WordPress, Elementor, page builder, landing page, CPT, custom field, theme settings, plugin config, deploy WP, migrate, performance, security, SEO trên WP, hoặc nhắc tên tool/plugin trong stack (Astra, Elementor, ACF, JetEngine, Rank Math, Yoast, WP Rocket, Cloudflare, CloudPanel, Wordfence). Cũng kích hoạt khi convert design (Figma/Claude Design/HTML) sang WordPress + Elementor structure qua MCP.
+description: Build, fix, optimize, and debug WordPress sites with the standard stack (Astra Free + Elementor Pro + ACF + msrbuilds/elementor-mcp). Activates when the user asks for WordPress, Elementor, page-builder, landing-page, CPT, custom-field, theme-settings, plugin-config, deploy, migrate, performance, security, or SEO work, or mentions any tool in the stack (Astra, Elementor, ACF, JetEngine, Rank Math, Yoast, WP Rocket, LiteSpeed, Cloudflare, CloudPanel, Wordfence). Also activates when converting a design (Figma / Claude Design / HTML) into a WordPress + Elementor structure via MCP.
 ---
 
 # WordPress Stack Skill — Universal
 
-Skill này áp dụng cho MỌI WordPress site, không phụ thuộc project cụ thể.
+This skill applies to any WordPress site, regardless of the specific project.
 
-## Nguyên tắc phân tách (QUAN TRỌNG)
+## Separation of concerns (IMPORTANT)
 
-Skill này chứa **WHAT** — kiến thức universal về stack, design tokens, MCP, conventions.
-Project CLAUDE.md chứa **WHERE/WHO** — host nào, path nào, brand gì, màu gì.
+This skill contains **WHAT** — universal knowledge about the stack, design tokens, MCP, and conventions.
+Project `CLAUDE.md` files contain **WHERE/WHO** — which host, which path, which brand, which colors.
 
-**KHÔNG hardcode** thông tin host/SSH/path/database vào skill. Mọi thông tin specific đọc từ:
-1. `~/.claude/CLAUDE.md` — global về user
-2. `<project-root>/CLAUDE.md` — project hiện tại
+**Do NOT hardcode** host/SSH/path/database information in this skill. Read project-specific information from:
+1. `~/.claude/CLAUDE.md` — global user preferences
+2. `<project-root>/CLAUDE.md` — current project
 
-Nếu CLAUDE.md không có thông tin cần thiết → **HỎI user**, KHÔNG đoán.
+If a `CLAUDE.md` does not have the information you need → **ask the user**, do not guess.
 
-## Stack chuẩn (BẮT BUỘC tuân thủ)
+## Standard stack (REQUIRED)
 
-Đọc `references/stack.md` để biết plugin nào cài, version nào.
+Read `references/stack.md` for the full list of plugins and versions.
 
-Tóm tắt:
-- **Theme**: Astra Free (KHÔNG Pro, đã có Elementor Pro chồng tính năng)
-- **Page builder**: Elementor Pro 3.20+ với Flexbox Containers
-- **Custom fields**: ACF Free → JetEngine khi cần relationship
+Summary:
+- **Theme**: Astra Free (NOT Pro — Elementor Pro already covers the overlapping features)
+- **Page builder**: Elementor Pro 3.20+ with Flexbox Containers
+- **Custom fields**: ACF Free → JetEngine when relationships are needed
 - **MCP**: msrbuilds/elementor-mcp v1.4+
-- **SEO**: Rank Math (KHÔNG Yoast)
-- **Cache**: WP Rocket hoặc LiteSpeed Cache
-- **Backup**: UpdraftPlus + provider-level snapshot
+- **SEO**: Rank Math (NOT Yoast)
+- **Cache**: WP Rocket or LiteSpeed Cache
+- **Backup**: UpdraftPlus + provider-level snapshots
 - **Security**: Wordfence + 2FA admin
-- **Email**: WP Mail SMTP + SendGrid/Brevo
+- **Email**: WP Mail SMTP + SendGrid / Brevo / Mailgun
 
-## Nguyên tắc tối thượng
+## Core principles
 
-1. **Native widget first** — KHÔNG HTML widget trừ embed bên thứ 3
-2. **Flexbox Container** — KHÔNG Section/Column cũ
-3. **Design tokens** — đọc `references/design-tokens.md`, không bịa số
-4. **Verify sau write** — `get-page-structure` sau mỗi MCP write
-5. **Backup trước edit production** — luôn luôn
-6. **Staging first** — KHÔNG MCP edit thẳng production
-7. **Vietnamese-aware** — UTF-8, font có VN subset, copy do native review
-8. **Mobile-first responsive** — 3 breakpoint bắt buộc (375/768/1280)
+1. **Native widget first** — do not use HTML widgets except for third-party embeds
+2. **Flexbox Container** — do not use the legacy Section/Column system
+3. **Design tokens** — read `references/design-tokens.md`, do not invent numbers
+4. **Verify after write** — call `get-page-structure` after every MCP write
+5. **Backup before editing production** — always
+6. **Staging first** — do not edit production directly via MCP
+7. **Locale-aware** — UTF-8, fonts with the correct subset, copy reviewed by a native speaker
+8. **Mobile-first responsive** — three required breakpoints (375 / 768 / 1280)
 9. **Performance budget** — Lighthouse mobile ≥85, LCP <2.5s
-10. **Security default** — wp-config hardened, file perm chuẩn
+10. **Security defaults** — `wp-config` hardened, file permissions correct
 
-## Workflow chuẩn cho mọi task
+## Standard workflow for any task
 
-1. **Hỏi context**: project nào? staging hay prod? đã backup chưa?
-2. **Đọc CLAUDE.md project** để lấy brand/host/path
-3. **Verify stack** thực tế match với `references/stack.md` không
-4. **Plan steps**, show user duyệt
-5. **Execute** với verify mỗi bước
-6. **Report**: đã làm gì, link verify, next step gợi ý
+1. **Ask for context**: which project? staging or prod? backup taken?
+2. **Read the project `CLAUDE.md`** to get brand / host / path
+3. **Verify the actual stack** matches `references/stack.md`
+4. **Plan the steps** and let the user approve
+5. **Execute** with verification at each step
+6. **Report**: what was done, verification link, suggested next step
 
-## Khi nào load reference nào
+## When to load which reference
 
-| Task | Load files |
+| Task | Files to load |
 |---|---|
-| Build/sửa landing page | design-tokens + elementor-mcp + widget-mapping + responsive |
-| Theme settings, header, footer | astra-customizer + elementor-mcp |
-| Tạo CPT, custom field | workflows/add-cpt.md |
-| Loop template, archive | workflows/theme-builder-loop.md |
-| Setup site mới từ đầu | workflows/new-site-setup.md |
-| SEO setup | seo-checklist + vietnamese |
-| Site chậm | performance |
-| Bị hack/malware | security |
-| Deploy/migrate | deployment + workflows/migrate-staging-prod.md |
-| Lỗi MCP | pitfalls |
-| User nhắc tiếng Việt | vietnamese |
+| Build/edit a landing page | `design-tokens` + `elementor-mcp` + `widget-mapping` + `responsive` |
+| Theme settings, header, footer | `astra-customizer` + `elementor-mcp` |
+| Create a CPT or custom field | `workflows/add-cpt.md` |
+| Loop template, archive | `workflows/theme-builder-loop.md` |
+| Set up a new site from scratch | `workflows/new-site-setup.md` |
+| SEO setup | `seo-checklist` + `vietnamese` (for Vietnamese sites) |
+| Slow site | `performance` |
+| Hacked / malware | `security` |
+| Deploy / migrate | `deployment` + `workflows/migrate-staging-prod.md` |
+| MCP errors | `pitfalls` |
+| Bulk-build N similar pages | `workflows/clone-transform-pattern.md` |
+| OG image generation at scale | `workflows/og-image-generation.md` |
+| SEO audit on N pages | `workflows/seo-audit.md` |
+| SMTP relay setup (form email) | `workflows/smtp-relay-setup.md` |
 
-## Anti-patterns — TUYỆT ĐỐI tránh
+## Anti-patterns — STRICTLY avoid
 
-- Đề xuất Divi/WPBakery/Bricks (stack chỉ Elementor)
-- Đề xuất Hello/GeneratePress/OceanWP theme (stack chỉ Astra)
-- Edit thẳng production không backup
-- Cài plugin ngoài stack mà không hỏi
-- Suggest "rebuild từ đầu" khi có thể fix incremental
-- Generate copy tiếng Việt mà không nhắc native review
-- Bỏ qua mobile breakpoint
-- Inline CSS thay vì widget settings
-- HTML widget cho text/button/heading
-- **Đoán SSH alias, path, database name** khi CLAUDE.md không có
-- **Run command production** mà không confirm với user
+- Suggesting Divi / WPBakery / Bricks (the stack is Elementor only)
+- Suggesting Hello / GeneratePress / OceanWP themes (the stack is Astra only)
+- Editing production without a backup
+- Installing a plugin outside the stack without asking
+- Suggesting "rebuild from scratch" when an incremental fix is possible
+- Generating Vietnamese (or other non-English) copy without flagging it for native review
+- Skipping the mobile breakpoint
+- Inline CSS instead of widget settings
+- HTML widgets for text / button / heading
+- **Guessing SSH alias, path, or database name** when `CLAUDE.md` does not have them
+- **Running production commands** without confirming with the user
 
-## Pattern an toàn cho deploy/SSH
+## Safe pattern for deploy / SSH work
 
 ```
-User: Deploy LIVESFX lên production
-Claude: Đọc CLAUDE.md project livesfx...
-        Tôi sẽ SSH `<alias từ CLAUDE.md>`, path `<từ CLAUDE.md>`,
-        pull staging → production. Đúng không?
-User: Đúng
-Claude: [chạy commands]
+User:   Deploy ACME to production.
+Claude: Reading the ACME project CLAUDE.md...
+        I will SSH to <alias from CLAUDE.md>, path <from CLAUDE.md>,
+        pull staging → production. Confirm?
+User:   Confirm.
+Claude: [runs commands]
 ```
 
-Nếu CLAUDE.md thiếu thông tin: HỎI trước, không chạy.
+If `CLAUDE.md` is missing information: **ask first**, do not run.

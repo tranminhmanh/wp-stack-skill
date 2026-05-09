@@ -1,54 +1,54 @@
 # Workflow: Migrate Staging → Production
 
-⚠️ Đọc CLAUDE.md project lấy hosting info trước. KHÔNG đoán path/SSH.
+⚠️ Read the project `CLAUDE.md` for hosting info first. Do NOT guess paths or SSH.
 
 ## Pre-migrate checklist
 
-- [ ] Production đã backup (DB + files)
-- [ ] Staging đã pass full QA
-- [ ] Lighthouse staging ≥85 mobile
-- [ ] Forms test thành công trên staging
-- [ ] No PHP errors trên staging
-- [ ] Schedule downtime window (nếu site live)
+- [ ] Production has been backed up (DB + files)
+- [ ] Staging has passed full QA
+- [ ] Lighthouse on staging ≥85 mobile
+- [ ] Forms tested successfully on staging
+- [ ] No PHP errors on staging
+- [ ] Schedule a downtime window (if the site is live)
 
-## Cách 1: WP Migrate Pro (recommended, $49+)
+## Option 1: WP Migrate Pro (recommended, $49+)
 
-1. Cài WP Migrate Pro trên cả staging + production
-2. Trên staging: Tools → WP Migrate → Push
+1. Install WP Migrate Pro on both staging + production
+2. On staging: Tools → WP Migrate → Push
 3. Target: production URL + secret key
-4. Find/replace URL: tự động
+4. Find/replace URL: automatic
 5. Push DB + files
-6. Verify production sau push
+6. Verify production after push
 
-Pros: dễ, an toàn, có rollback.
-Cons: $$.
+Pros: easy, safe, supports rollback.
+Cons: paid.
 
-## Cách 2: Duplicator Free
+## Option 2: Duplicator Free
 
-1. Cài Duplicator trên staging
+1. Install Duplicator on staging
 2. Create Package → Build → Download (.zip + installer.php)
-3. Upload 2 files lên production root
-4. Truy cập `<prod-url>/installer.php`
-5. Configure DB production
+3. Upload both files to the production root
+4. Visit `<prod-url>/installer.php`
+5. Configure the production DB
 6. Run installer
-7. Login admin, finalize, delete installer files
+7. Login to admin, finalize, delete installer files
 
 Pros: free.
-Cons: prod phải clean (xóa hết WP files cũ).
+Cons: production must be clean (delete the existing WP files first).
 
-## Cách 3: Manual SSH (đọc CLAUDE.md cho path)
+## Option 3: Manual SSH (read CLAUDE.md for paths)
 
 ```bash
 # 1. Backup production
-ssh <alias từ CLAUDE.md>
+ssh <alias from CLAUDE.md>
 cd <prod-path>
 tar czf /tmp/prod-backup-$(date +%Y%m%d).tar.gz .
 mysqldump -u <db-user> -p <prod-db> > /tmp/prod-db-$(date +%Y%m%d).sql
 
-# 2. Stop accept traffic (optional, maintenance mode)
-# Có thể dùng .htaccess redirect, hoặc plugin WP Maintenance Mode
+# 2. Stop accepting traffic (optional, maintenance mode)
+# .htaccess redirect, or WP Maintenance Mode plugin
 
-# 3. Pull staging files (rsync from staging server hoặc local pull)
+# 3. Pull staging files (rsync from staging server or local pull)
 rsync -avz --exclude='wp-config.php' \
   <staging>:<staging-path>/ \
   <prod-path>/
@@ -61,7 +61,7 @@ mysql -u <db-user> -p <prod-db> < /tmp/staging-db.sql
 cd <prod-path>
 wp search-replace '<staging-url>' '<prod-url>' --skip-columns=guid
 
-# 6. Update specific configs nếu cần (uploads URL, etc.)
+# 6. Update specific configs if needed (uploads URL, etc.)
 wp option update siteurl '<prod-url>'
 wp option update home '<prod-url>'
 
@@ -69,14 +69,14 @@ wp option update home '<prod-url>'
 wp cache flush
 wp rewrite flush
 
-# 8. Permission re-set
+# 8. Re-set permissions
 chown -R <php-user>:<php-user> <prod-path>
 find <prod-path> -type d -exec chmod 755 {} \;
 find <prod-path> -type f -exec chmod 644 {} \;
 chmod 600 <prod-path>/wp-config.php
 ```
 
-## Cách 4: Provider-specific
+## Option 4: Provider-specific
 
 ### SiteGround
 Site Tools → Dev → WordPress Migrator → Source URL + Token.
@@ -85,49 +85,49 @@ Site Tools → Dev → WordPress Migrator → Source URL + Token.
 Application Management → Clone App → adjust URL.
 
 ### Hostinger
-hPanel → File Manager + phpMyAdmin (manual hơn).
+hPanel → File Manager + phpMyAdmin (more manual).
 
 ### CloudPanel
-SSH manual (cách 3) hoặc snapshot restore qua provider VPS dashboard.
+SSH manual (option 3) or snapshot restore via the provider VPS dashboard.
 
-## Post-migrate verify
+## Post-migrate verification
 
-- [ ] Homepage load OK
-- [ ] 5 page chính load OK
-- [ ] Login admin được
-- [ ] Form submit + email nhận
-- [ ] Search Console không report 404 spike
+- [ ] Homepage loads OK
+- [ ] 5 main pages load OK
+- [ ] Admin login works
+- [ ] Form submit + email received
+- [ ] Search Console reports no 404 spike
 - [ ] SSL valid (no mixed content)
-- [ ] Cloudflare Purge Everything (nếu dùng)
+- [ ] Cloudflare Purge Everything (if used)
 - [ ] WP Rocket Clear Cache
-- [ ] LiteSpeed Cache Purge All (nếu dùng)
-- [ ] Google Analytics receive event
-- [ ] Sitemap regenerate + submit GSC
+- [ ] LiteSpeed Cache Purge All (if used)
+- [ ] Google Analytics receiving events
+- [ ] Sitemap regenerated + submitted to GSC
 
-## Common bugs sau migrate
+## Common bugs after migration
 
-### 1. Mixed content (http:// trong DB)
+### 1. Mixed content (http:// in DB)
 ```bash
 wp search-replace 'http://<site>' 'https://<site>' --skip-columns=guid
 ```
 
-### 2. Image 404 sau migrate
-- Check uploads path đúng
-- Permission wp-content/uploads
-- WordPress.com style: nếu staging dùng s3 thì update đường dẫn
+### 2. Image 404 after migration
+- Check uploads path is correct
+- Permission on `wp-content/uploads`
+- WordPress.com style: if staging used S3, update the path
 
 ### 3. White screen of death
-- WP_DEBUG_LOG ON tạm thời
-- Check error_log
-- Plugin compatibility (deactive all → reactive từng cái)
+- Enable `WP_DEBUG_LOG` temporarily
+- Check the error log
+- Plugin compatibility (deactivate all → reactivate one by one)
 
-### 4. Login admin loop redirect
-- Clear browser cookies cho domain
-- wp-config: define('COOKIE_DOMAIN', '.<site>');
+### 4. Admin login redirect loop
+- Clear browser cookies for the domain
+- wp-config: `define('COOKIE_DOMAIN', '.<site>');`
 
 ### 5. Permalinks 404
-- wp rewrite flush
-- Settings → Permalinks → Save (không đổi gì)
+- `wp rewrite flush`
+- Settings → Permalinks → Save (no changes)
 
 ## Rollback
 

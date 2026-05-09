@@ -1,49 +1,49 @@
-# Workflow: Setup WordPress site mới từ A-Z
+# Workflow: Set up a new WordPress site A → Z
 
 ## Pre-flight
 
-- [ ] Domain mua, DNS point về hosting
-- [ ] Hosting provisioned (CloudPanel/SiteGround/Hostinger/khác)
-- [ ] SSL Let's Encrypt active
-- [ ] WordPress core install
-- [ ] Admin user: KHÔNG "admin", strong password
-- [ ] Email admin đúng
+- [ ] Domain purchased, DNS pointed to hosting
+- [ ] Hosting provisioned (CloudPanel / SiteGround / Hostinger / other)
+- [ ] Let's Encrypt SSL active
+- [ ] WordPress core installed
+- [ ] Admin user: NOT "admin", strong password
+- [ ] Admin email correct
 
 ## Day 1 — Foundation
 
-### 1. Core settings (15 phút)
+### 1. Core settings (15 min)
 
 ```
 Settings → General:
-  - Site title, tagline (từ CLAUDE.md project)
-  - Timezone: UTC+7 (cho VN)
-  - Date format: d/m/Y
-  - Week starts: Monday
+  - Site title, tagline (from project CLAUDE.md)
+  - Timezone: per project
+  - Date format: per locale (e.g. d/m/Y for VN, m/d/Y for US)
+  - Week starts: per locale
 
 Settings → Reading:
-  - Front page: Static page (tạo Home draft)
-  - Posts page: Blog (tạo Blog draft)
+  - Front page: Static page (create Home draft)
+  - Posts page: Blog (create Blog draft)
 
 Settings → Permalinks:
   - Post name (/%postname%/)
 
 Settings → Discussion:
-  - Disable comments default (nếu không cần)
+  - Disable comments by default (unless needed)
 ```
 
-⚠️ **Language pack** (cho non-English locale): `update_option('WPLANG', 'vi')` chỉ set DB value. Phải có file `wp-content/languages/vi.mo` thì admin UI mới switch. Trigger qua admin: Settings → Site Language → Vietnamese → Save (WP auto-download 72 lang files ~2MB), hoặc WP-CLI:
+⚠️ **Language pack** (for non-English locales): `update_option('WPLANG', 'vi')` only sets the DB value. You also need the `wp-content/languages/vi.mo` file for the admin UI to switch. Trigger via admin: Settings → Site Language → choose locale → Save (WP auto-downloads ~72 language files, ~2MB), or via WP-CLI:
 ```bash
 wp language core install vi --activate
 ```
-Verify: `ls wp-content/languages/vi.mo` có tồn tại.
+Verify: `ls wp-content/languages/vi.mo` exists.
 
-### 2. Theme + plugins (30 phút)
+### 2. Theme + plugins (30 min)
 
-Cài theo thứ tự:
+Install in order:
 1. Astra (theme)
 2. Elementor + Elementor Pro
 3. WordPress MCP Adapter
-4. msrbuilds/elementor-mcp (zip từ GitHub)
+4. msrbuilds/elementor-mcp (zip from GitHub)
 5. ACF Free
 6. Rank Math
 7. Wordfence
@@ -52,26 +52,26 @@ Cài theo thứ tự:
 10. UpdraftPlus
 11. WP Mail SMTP
 
-⚠️ Khi upload zip msrbuilds/elementor-mcp từ GitHub source: rename folder thành `elementor-mcp/` trước khi zip lại. GitHub source zipball có hash-suffixed folder làm WP activation lỗi.
+⚠️ When uploading the msrbuilds/elementor-mcp zip from GitHub source: rename the folder to `elementor-mcp/` before zipping. The GitHub source zipball has a hash-suffixed folder name that fails WP plugin activation.
 
-⚠️ **mcp-adapter dùng release zip, KHÔNG `trunk` branch**: trunk thiếu `vendor/` (composer autoload broken) → fatal `\WP\MCP\Core\McpAdapter class missing`. Download release zip v0.5.0+ từ GitHub Releases (vendor pre-built).
+⚠️ **mcp-adapter requires the release zip, NOT the `trunk` branch**: trunk is missing `vendor/` (composer autoload broken) → fatal `\WP\MCP\Core\McpAdapter class missing`. Download the release zip v0.5.0+ from GitHub Releases (vendor pre-built).
 
-### 3. Astra Customizer (30 phút)
+### 3. Astra Customizer (30 min)
 
-Đọc `references/astra-customizer.md`. Brand-specific lấy từ CLAUDE.md project.
+See `references/astra-customizer.md`. Brand-specific values come from the project `CLAUDE.md`.
 
-### 4. Elementor settings (15 phút)
+### 4. Elementor settings (15 min)
 
 ```
 Elementor → Settings → Features:
   - Flexbox Container: Active
-  - Container Grid: Active (nếu cần)
+  - Container Grid: Active (if needed)
   - Nested Tabs: Active
   - Nested Accordion: Active
 
 Elementor → Settings → Advanced:
   - Enable Unfiltered File Uploads: Yes
-  - Switch Editor Loader Method: ON nếu chậm
+  - Switch Editor Loader Method: ON if slow
 
 Elementor → Settings → Performance:
   - CSS Print Method: External File
@@ -79,25 +79,25 @@ Elementor → Settings → Performance:
   - Optimize DOM Output: Active
 ```
 
-### 5. Application Password + MCP setup (15 phút)
+### 5. Application Password + MCP setup (15 min)
 
-Đọc `references/elementor-mcp.md`.
-Verify Claude Code `list-pages` thành công.
+See `references/elementor-mcp.md`.
+Verify Claude Code `list-pages` succeeds.
 
-### 6. Security hardening (15 phút)
+### 6. Security hardening (15 min)
 
-Đọc `references/security.md`.
+See `references/security.md`.
 
 ## Day 2 — Build pages
 
-### 1. Tạo CPT nếu cần
-Đọc `workflows/add-cpt.md`.
+### 1. Create CPT if needed
+See `workflows/add-cpt.md`.
 
-### 2. Tạo ACF fields nếu cần
-Field group export → save vào templates/acf/<project>.json.
+### 2. Create ACF fields if needed
+Field group export → save into `templates/acf/<project>.json`.
 
 ### 3. Build Theme Builder templates
-Đọc `workflows/theme-builder-loop.md`:
+See `workflows/theme-builder-loop.md`:
 - Header global
 - Footer global
 - Single post
@@ -105,14 +105,14 @@ Field group export → save vào templates/acf/<project>.json.
 - 404
 - Search results
 
-### 4. Build landing pages qua MCP
+### 4. Build landing pages via MCP
 
 Per page:
 1. Backup
-2. Plan section-by-section
-3. add-container + add-widget loop
-4. Verify get-page-structure
-5. Test 3 breakpoint trên browser thật
+2. Plan section by section
+3. `add-container` + `add-widget` loop
+4. Verify with `get-page-structure`
+5. Test 3 breakpoints in a real browser
 
 ## Day 3 — SEO + Performance
 
@@ -122,44 +122,44 @@ Per page:
 
 ## Day 4 — Pre-launch QA
 
-- [ ] All forms test send + receive email
-- [ ] All CTA link đúng
-- [ ] No 404 internal link (Broken Link Checker plugin)
+- [ ] All forms tested (send + receive email)
+- [ ] All CTAs link correctly
+- [ ] No 404 internal links (Broken Link Checker plugin)
 - [ ] Lighthouse mobile ≥85
 - [ ] Cross-browser: Chrome, Safari, Firefox, Edge
 - [ ] Cross-device: 375, 768, 1280, 1920px
 - [ ] Search Console verified + sitemap submitted
-- [ ] Google Analytics 4 receive event
-- [ ] Backup snapshot trước launch
+- [ ] Google Analytics 4 receiving events
+- [ ] Backup snapshot before launch
 
 ## Launch Day
 
 1. DNS final check
 2. Cloudflare proxied
-3. Submit sitemap GSC
-4. Monitor 24h: error log, uptime, GA event
+3. Submit sitemap to GSC
+4. Monitor for 24h: error log, uptime, GA events
 5. Announce
 
-## Decision tree: header/footer rendering strategy
+## Decision tree: header / footer rendering strategy
 
-Sites dùng `elementor_canvas` template (strip toàn bộ Astra header/footer) cần build header/footer riêng. 2 hướng:
+Sites using the `elementor_canvas` template (which strips Astra header/footer) need their own header / footer. Two approaches:
 
 ```
-Site dùng theme default header/footer (Astra header builder)?
-├─ YES → KHÔNG cần làm gì. Astra header/footer auto render qua wp_head + astra_footer hooks.
+Site uses default theme header/footer (Astra header builder)?
+├─ YES → Nothing to do. Astra header/footer auto-renders via wp_head + astra_footer hooks.
 │
-└─ NO (canvas template strip Astra):
-   ├─ Có Elementor Pro?
-   │  └─ YES → Theme Builder template với display conditions "Entire Site"
+└─ NO (canvas template strips Astra):
+   ├─ Have Elementor Pro?
+   │  └─ YES → Theme Builder template with display conditions "Entire Site"
    │           Header location → Pro Theme Builder
    │           Footer location → Pro Theme Builder
-   │           1 lần build, propagate auto cho mọi page
+   │           Build once, propagates automatically to every page
    │
    └─ NO Elementor Pro:
-      ├─ Inject section 0 (header strip) + section cuối (footer) vào MỖI page
-      ├─ Helper script đồng bộ: khi update header, walk tất cả canvas pages, replace section 0
-      └─ Hash anchor `#xxx` trong header → transform thành `/#xxx` (root-relative)
-         (Xem references/pitfalls.md "Shared section across pages with hash anchors")
+      ├─ Inject section 0 (header strip) + last section (footer) into EVERY page
+      ├─ Sync helper script: when updating the header, walk all canvas pages and replace section 0
+      └─ Hash anchors `#xxx` in the header → transform to `/#xxx` (root-relative)
+         (See references/pitfalls.md "Shared section across pages with hash anchors")
 ```
 
-Astra free 4.13.x KHÔNG tự suppress header khi Theme Builder template active → cần mu-plugin bridge (xem references/astra-customizer.md "Astra free + Theme Builder bridge").
+Astra Free 4.13.x does NOT auto-suppress the header when a Theme Builder template is active → you need a mu-plugin bridge (see `references/astra-customizer.md` "Astra Free + Theme Builder bridge").

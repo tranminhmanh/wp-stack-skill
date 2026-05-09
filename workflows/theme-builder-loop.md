@@ -1,49 +1,49 @@
 # Workflow: Theme Builder + Loop Template
 
-Áp dụng khi có CPT cần render hàng loạt (vd: 1000 chi nhánh, danh sách sản phẩm, blog post grid).
+For when a CPT needs to be rendered in bulk (e.g. 1000 branches, product list, blog post grid).
 
-## Khi nào dùng Loop Grid (Pro)
+## When to use Loop Grid (Pro)
 
-- Render danh sách items từ CPT/Posts
-- Mỗi item dùng cùng template
-- Cần pagination/filter/sort
+- Render a list of items from a CPT or Posts
+- Each item uses the same template
+- Need pagination / filter / sort
 
-KHÔNG dùng Loop Grid khi:
-- Chỉ có 3-5 items cố định → build tay container
-- Items khác nhau hoàn toàn về layout
+Do NOT use Loop Grid when:
+- Only 3–5 fixed items → build a container by hand
+- Items have completely different layouts
 
-## Quy trình
+## Procedure
 
-### 1. Tạo Loop Item template
+### 1. Create a Loop Item template
 
 ```
 Templates → Theme Builder → Loop Item → Add New
 - Type: Loop Item
-- Source: chọn CPT (vd: Branch)
+- Source: pick the CPT (e.g. Branch)
 - Conditions: All [post type]
 ```
 
-### 2. Design Loop Item
+### 2. Design the Loop Item
 
-Trong template editor:
-- Dùng widget post-related: Featured Image, Post Title, Post Excerpt, Post Info
-- Dùng Dynamic Tags để bind ACF fields:
-  - Heading widget → Dynamic Tag → ACF Field → chọn field
-- Style như card thường: container + image + heading + meta + button
+In the template editor:
+- Use post-related widgets: Featured Image, Post Title, Post Excerpt, Post Info
+- Use Dynamic Tags to bind ACF fields:
+  - Heading widget → Dynamic Tag → ACF Field → pick field
+- Style as a normal card: container + image + heading + meta + button
 
-### 3. Tạo Archive template (nếu cần page list)
+### 3. Create an Archive template (if you need a list page)
 
 ```
 Templates → Theme Builder → Archive → Add New
-- Type: Archive  
+- Type: Archive
 - Conditions: [CPT] Archive
 ```
 
-Trong archive template:
+In the archive template:
 - Page title heading
 - Loop Grid widget
-- Source: chọn CPT
-- Loop template: chọn Loop Item vừa tạo
+- Source: pick the CPT
+- Loop template: pick the Loop Item you just made
 - Columns: 3 desktop / 2 tablet / 1 mobile
 - Posts per page: 12
 - Pagination: Numbers
@@ -56,27 +56,27 @@ Templates → Theme Builder → Single → Add New
 - Conditions: All Singular [CPT]
 ```
 
-Design single page: hero, content, ACF fields, related items.
+Design the single page: hero, content, ACF fields, related items.
 
-### 5. Test với Dynamic Preview
+### 5. Test with Dynamic Preview
 
-Trong template editor, top toolbar có "Preview Settings":
-- Choose specific post → preview với data thật
-- Đảm bảo data render đúng trước khi publish
+In the template editor, the top toolbar has "Preview Settings":
+- Choose a specific post → preview with real data
+- Make sure the data renders correctly before publishing
 
-### 6. Add filter (advanced, nếu cần)
+### 6. Add filters (advanced, if needed)
 
-Dùng **JetSmartFilters** hoặc **FacetWP**:
-- Tạo filter widget trên archive page (Tỉnh/Thành, Loại, etc.)
-- Bind filter với Loop Grid query
-- Test AJAX filter hoạt động
+Use **JetSmartFilters** or **FacetWP**:
+- Add filter widgets to the archive page (province / type / etc.)
+- Bind the filter to the Loop Grid query
+- Test that AJAX filtering works
 
-## Mapping cho BMMH 1000 chi nhánh (ví dụ)
+## Example mapping for a 1000-branch CPT
 
 ```
 CPT: branch
 ACF fields:
-  - province (select: 63 tỉnh thành)
+  - province (select: 63 provinces)
   - district (text)
   - address (text)
   - phone (text)
@@ -87,57 +87,57 @@ ACF fields:
 Loop Item template:
   - Container card padding 24
   - Image (featured)
-  - Heading H3 (title - tên chi nhánh)
-  - Meta (district, province) qua Dynamic Tag
-  - Address text qua Dynamic Tag
-  - Button "Xem chi tiết" link to single
+  - Heading H3 (title — branch name)
+  - Meta (district, province) via Dynamic Tag
+  - Address text via Dynamic Tag
+  - "View details" button linked to single
 
-Archive template (chi-nhanh/):
-  - Hero "Hệ thống chi nhánh"
-  - Filter: dropdown 63 tỉnh + district
+Archive template (/branches/):
+  - Hero "Our Branches"
+  - Filter: province dropdown + district
   - Loop Grid: Source=branch, columns 3/2/1, 12/page
   - Pagination
 
-Single template (chi-nhanh/<slug>/):
-  - Hero với featured image + title
+Single template (/branches/<slug>/):
+  - Hero with featured image + title
   - Address, phone, hours
-  - Google Map embed (iframe từ google_maps_url)
-  - Related branches cùng tỉnh
+  - Google Map embed (iframe from google_maps_url)
+  - Related branches in the same province
 ```
 
-## Bẫy Theme Builder
+## Theme Builder pitfalls
 
-### 1. Loop Item không hiển thị data
-- Check Source CPT đúng chưa
-- Check ACF field binding qua Dynamic Tag
-- Reload editor (close + reopen)
+### 1. Loop Item shows no data
+- Check the Source CPT is correct
+- Check the ACF field binding via Dynamic Tag
+- Reload the editor (close + reopen)
 
-### 2. Conditions không apply
+### 2. Conditions not applying
 - Settings → Display Conditions → Include: All [CPT]
-- Save → publish template
+- Save → publish the template
 - Clear cache
 
-### 3. Multiple Loop Item template conflict
-1 CPT chỉ nên có 1 Loop Item template active. Nếu có nhiều, set conditions cụ thể (vd: by category) để không conflict.
+### 3. Multiple Loop Item templates conflict
+A single CPT should have only one active Loop Item template. If you have several, set specific conditions (e.g. by category) so they don't conflict.
 
-### 4. Pagination không hoạt động
+### 4. Pagination not working
 - Posts per page > 0
 - Pagination type: Numbers / Load More / Infinite Scroll
-- Permalink flush sau tạo CPT mới
+- Permalink flush after creating a new CPT
 
-### 5. Loop Grid render chậm khi nhiều items
+### 5. Loop Grid renders slowly with many items
 - Limit posts per page ≤ 12
-- Disable lazy load CSS Elementor cho Loop Grid (tăng LCP)
-- Use object cache (Redis/Memcached) tier hosting
-- Cache page với WP Rocket
+- Disable Elementor lazy-loaded CSS for Loop Grid (improves LCP)
+- Use object cache (Redis / Memcached) on the hosting tier
+- Cache the page with WP Rocket
 
-## Bẫy: `set-template-conditions` MCP không trigger conditions cache
+## Pitfall: `set-template-conditions` MCP doesn't trigger conditions cache
 
-MCP `set-template-conditions` ghi `_elementor_conditions` post meta đúng (`include/general` hoặc per-CPT) NHƯNG KHÔNG update option `elementor_pro_theme_builder_conditions` (cache aggregated cho tất cả templates). Symptom: `elementor_theme_do_location('header')` trả `false` → header location không render dù template có conditions đúng.
+The MCP `set-template-conditions` writes the `_elementor_conditions` post meta correctly (`include/general` or per-CPT) BUT does NOT update the option `elementor_pro_theme_builder_conditions` (the cache aggregating conditions across all templates). Symptom: `elementor_theme_do_location('header')` returns `false` → header location does not render even though the template has the right conditions.
 
-**Root cause**: MCP chỉ ghi post meta, KHÔNG trigger `save_post_elementor_library` action hooks (Elementor Pro register cache regen ở đó).
+**Root cause**: MCP only writes the post meta, NOT triggering the `save_post_elementor_library` action hooks (where Elementor Pro registers the cache regen).
 
-**Fix permanent**: mu-plugin auto-regenerate cache:
+**Permanent fix**: mu-plugin auto-regenerating the cache:
 ```php
 <?php
 // wp-content/mu-plugins/elementor-conditions-cache-fix.php
@@ -151,7 +151,7 @@ add_action('save_post_elementor_library', function ($post_id) {
 }, 99);
 ```
 
-Hoặc trigger manual sau MCP set-template-conditions:
+Or trigger manually after MCP `set-template-conditions`:
 ```bash
 docker exec <c> php -r "
 require_once '/var/www/html/wp-load.php';
@@ -159,17 +159,17 @@ require_once '/var/www/html/wp-load.php';
 "
 ```
 
-## Verify-iterate-fix cycle (BẮT BUỘC)
+## Verify-iterate-fix cycle (REQUIRED)
 
-Sau mỗi MCP batch (build template, set conditions, update settings):
-1. Clear caches (xem [`references/performance.md` "Cache invalidation playbook"](../references/performance.md))
+After every MCP batch (template build, set conditions, update settings):
+1. Clear caches (see [`references/performance.md` "Cache invalidation playbook"](../references/performance.md))
 2. `curl -sI <preview URL>` → expect 200
-3. Visit page trong browser hoặc Chrome MCP screenshot → verify visual
-4. Nếu sai → debug rendered CSS + post meta:
+3. Visit the page in a browser or take a Chrome MCP screenshot → verify visually
+4. If wrong → debug rendered CSS + post meta:
    ```bash
    wp post meta get <template_id> _elementor_conditions
    wp option get elementor_pro_theme_builder_conditions | head -20
    ```
 5. Adjust → re-run → re-verify
 
-Average 3–4 iterations cho complex Theme Builder layouts. KHÔNG batch nhiều template build rồi mới verify — verify ngay sau mỗi template để rollback gọn.
+Average 3–4 iterations for complex Theme Builder layouts. Do NOT batch many template builds and verify at the end — verify after each template so rollback is clean.
