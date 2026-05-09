@@ -152,6 +152,25 @@ This project follows [Semantic Versioning](https://semver.org/). Current version
 
 ---
 
+## About the maintainer
+
+Built and maintained by **Trần Minh Mạnh** ([@tranminhmanh](https://github.com/tranminhmanh)) — independent WordPress + Elementor developer based in Vietnam, focused on B2B sites where the form actually has to convert.
+
+- GitHub: [@tranminhmanh](https://github.com/tranminhmanh)
+- Email: [tranminhmanh.official@gmail.com](mailto:tranminhmanh.official@gmail.com)
+
+The patterns in this skill come from production debugging on three sites I built and maintain over the past three months:
+
+- **B2B logistics** — 8 country pillar pages + 26 port-pair subpages + 5 long-tail blog posts. Source of the 9-week silent Pro Form `custom_id` bug, the slug-mismatch dead-link cleanup pattern, and most of the bulk-build clone-transform work.
+- **Regional food brand** — Astra Free + Elementor `elementor_canvas` template on shared hosting. Source of most WAF + shared-host pitfalls (Imunify360, PHP-FPM worker exhaustion, LiteSpeed two-path cache invalidation, addon-domain docroot verification).
+- **Event SFX premium B2B** — VPS + Docker + msrbuilds/elementor-mcp on a fresh stack. Source of the MCP-specific gotchas (image widget full object, MCP Abilities API input wrapper format, async-upload vs REST media fallback chain).
+
+Open to consulting on WordPress + Elementor + Claude Code projects — best to reach out via the email above.
+
+For contributions, bug reports, and questions about the patterns themselves, please use [Issues](https://github.com/tranminhmanh/wp-stack-skill/issues) or [Discussions](https://github.com/tranminhmanh/wp-stack-skill/discussions) — much more useful than email since others can search them later.
+
+---
+
 ## Contributing
 
 Contributions welcome — especially new patterns from production debugging. See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the workflow.
