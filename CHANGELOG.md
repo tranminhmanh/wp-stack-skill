@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] — 2026-05-10
+
+### Fixed
+
+- **Brand-leak scrub** across v0.2.0 files (`CHANGELOG.md`, `references/mcp-architecture.md`, `references/pitfalls.md`, `workflows/claude-mcp-connector-setup.md`, `workflows/seo-audit.md`, `workflows/session-distillation.md`) — replaced real domain names, brand acronyms, customer-identifying tech combos, and one v0.1.0-carryover maintainer first name with neutral placeholders (`example.com` / `acme-*` / `Site A` / `Site B`). Pure documentation scrub, no logic changes. Author section in `README.md` kept intentionally (standard OSS author credit).
+
+### Added
+
+- **`workflows/session-distillation.md` — quality bar criterion #5 "Brand-neutral"**: a distilled insight must be expressible without revealing real domain / brand acronym / customer name / identifying stack combo. Re-write with `example.com` / `acme-*` / `Site A`/`B` placeholders if the real-world origin is sensitive. Required for public-skill governance.
+- **`workflows/session-distillation.md` — step 5b "Pre-publish brand-leak scan"**: 4 grep patterns to run before every `git push` (real domain, brand acronym, connector slug, maintainer first name) + recovery procedure when a leak ships. Catches the leak class that shipped in v0.2.0 before it ships again.
+
+[0.2.1]: https://github.com/tranminhmanh/wp-stack-skill/releases/tag/v0.2.1
+
 ## [0.2.0] — 2026-05-10
 
 ### Added
