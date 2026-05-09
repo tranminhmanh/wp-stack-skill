@@ -68,7 +68,10 @@ Summary:
 | Slow site | `performance` |
 | Hacked / malware | `security` |
 | Deploy / migrate | `deployment` + `workflows/migrate-staging-prod.md` |
-| MCP errors | `pitfalls` |
+| MCP errors | `pitfalls` + `mcp-architecture` (1 plugin = 1 endpoint = 1 connector) |
+| MCP bridge 404 / tool count gap | `mcp-architecture` + `wp-abilities` (REST fallback) |
+| Setup MCP connector mới | `workflows/claude-mcp-connector-setup.md` |
+| Distill insights cuối session | `workflows/session-distillation.md` |
 | Bulk-build N similar pages | `workflows/clone-transform-pattern.md` |
 | OG image generation at scale | `workflows/og-image-generation.md` |
 | SEO audit on N pages | `workflows/seo-audit.md` |

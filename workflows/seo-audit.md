@@ -319,8 +319,124 @@ Adjust 3 chỗ:
 
 Save 3 scripts vào project's `tools/` folder. Re-run quarterly.
 
+## Tier 2 Python alternative — pure stdlib, không deps (preferred)
+
+Bash heredoc + jq nhanh nhưng fragile với UTF-8 và escape. Python stdlib version sạch hơn, chạy trên macOS/Linux không cần install gì:
+
+```python
+#!/usr/bin/env python3
+"""SEO Audit Tier 2 — frontend crawl pure stdlib."""
+import json, re, time, urllib.request
+from pathlib import Path
+
+URLS = [
+    "https://example.com/",
+    "https://example.com/page-1/",
+    # ...
+]
+UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/124.0 Safari/537.36"
+
+def fetch(url):
+    req = urllib.request.Request(url, headers={"User-Agent": UA})
+    t0 = time.time()
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            return resp.getcode(), resp.read().decode("utf-8", errors="replace"), time.time()-t0
+    except Exception as e:
+        return 0, f"ERROR: {e}", time.time()-t0
+
+def extract(pattern, html, group=1):
+    m = re.search(pattern, html, re.IGNORECASE | re.DOTALL)
+    return (m.group(group) or "").strip() if m else ""
+
+def analyze(url, status, html, elapsed):
+    title = extract(r"<title[^>]*>([^<]*)</title>", html)
+    desc = extract(r'<meta[^>]+name=["\']description["\'][^>]*content=["\']([^"\']*)', html)
+    canonical = extract(r'<link[^>]+rel=["\']canonical["\'][^>]*href=["\']([^"\']*)', html)
+    og_image = extract(r'<meta[^>]+property=["\']og:image["\'][^>]*content=["\']([^"\']*)', html)
+    h1_matches = re.findall(r"<h1[^>]*>(.*?)</h1>", html, re.IGNORECASE | re.DOTALL)
+    schema_types = sorted(set(re.findall(r'"@type"\s*:\s*"([A-Za-z]+)"', html)))
+    img_tags = re.findall(r"<img\b[^>]*>", html, re.IGNORECASE)
+    return {
+        "url": url, "status": status, "time_sec": round(elapsed, 3),
+        "size_bytes": len(html.encode("utf-8")),
+        "title": title, "title_len": len(title),
+        "desc": desc, "desc_len": len(desc),
+        "canonical": canonical, "og_image": og_image,
+        "h1_first": re.sub(r"<[^>]+>", "", h1_matches[0]).strip() if h1_matches else "",
+        "h1_count": len(h1_matches),
+        "h2_count": len(re.findall(r"<h2[\s>]", html, re.IGNORECASE)),
+        "schema_types": schema_types,
+        "img_total": len(img_tags),
+        "img_no_alt": sum(1 for t in img_tags if not re.search(r'\balt\s*=', t, re.IGNORECASE)),
+        "links_internal": len(re.findall(r'href=["\'](/[^"\']+|https://[^"\']*example\.com[^"\']*)["\']', html)),
+        "lang": extract(r'<html[^>]+lang=["\']([^"\']*)["\']', html),
+        "generator": extract(r'<meta[^>]+name=["\']generator["\'][^>]*content=["\']([^"\']*)', html),
+        "inline_css_kb": sum(len(m) for m in re.findall(r"<style[^>]*>.*?</style>", html, re.IGNORECASE | re.DOTALL)) // 1024,
+    }
+
+def main():
+    out = []
+    for i, url in enumerate(URLS, 1):
+        print(f"[{i}/{len(URLS)}] {url}", flush=True)
+        status, html, elapsed = fetch(url)
+        if status >= 400 or not html:
+            out.append({"url": url, "status": status, "error": True})
+            continue
+        out.append(analyze(url, status, html, elapsed))
+    Path("seo_audit_live.json").write_text(json.dumps(out, ensure_ascii=False, indent=2), encoding="utf-8")
+
+if __name__ == "__main__":
+    main()
+```
+
+**Vì sao Python > Bash version:**
+- ✅ UTF-8 native — không lo Vietnamese diacritics bị mangled qua bash subshell substitution (xem `pitfalls.md` "Bash `$(curl ...)` corrupts non-ASCII UTF-8")
+- ✅ Stdlib only — chạy ngay trên macOS/Linux/Docker, không cần `jq` / `python3-pip`
+- ✅ Regex compose dễ hơn — không phải escape `"` trong heredoc
+- ✅ JSON encode safe — không cần `printf '%s' | jq -Rs .` workaround
+- ✅ Add column mới = sửa 1 dòng dict, không phải sửa 5 chỗ
+
+Battle-tested PKM 2026-05-10: 20 URL, 3 phút runtime, 0 escape bug.
+
+## ⚠️ KHÔNG dùng WebFetch cho SEO data extraction
+
+WebFetch convert HTML → markdown rồi parse → mất nhiều structured data critical cho audit:
+- JSON-LD `<script type="application/ld+json">` thường strip
+- `<meta property="og:*">` summary lược
+- HTML comments (Yoast/Rank Math hint) bỏ
+- Multi-H1 đếm sai
+
+**Reproduce thực tế** (PKM home): WebFetch hỏi "extract JSON-LD types" → output "No JSON-LD detected". Curl raw + grep `'"@type"'` → tìm thấy 8 types (Article, GeoCoordinates, ImageObject, Person, Place, SearchAction, WebPage, WebSite).
+
+**Rule**: SEO audit phải dùng raw HTML parse. WebFetch chỉ cho user-facing content (article body, FAQ).
+
+Đầy đủ: [`references/pitfalls.md`](../references/pitfalls.md) "WebFetch — KHÔNG đáng tin cho SEO data extraction".
+
+## Output dashboard interactive với `data:build-dashboard` skill
+
+Sau khi có `seo_audit_live.json`, build dashboard self-contained HTML với skill `data:build-dashboard`:
+
+```
+/build-dashboard SEO Audit Dashboard cho <site> — N page chính.
+Input: seo_audit_live.json
+Output: dashboard.html (single file, embed data + Chart.js CDN)
+Layout:
+  - 5 KPI cards (total, healthy, critical, high, medium)
+  - Issue summary group theo type
+  - Charts: H1 doughnut, title length histogram, page weight bar, TTFB bar
+  - Per-page table sortable
+  - Recommendations ranked theo priority
+```
+
+Dashboard mở được trong browser, send qua Slack/email cho stakeholder không có terminal.
+
+Battle-tested PKM 2026-05-10: dashboard 32KB embed 20 page, render < 100ms, share được link Synology Drive.
+
 ## Liên quan
 
 - [`references/seo-checklist.md`](../references/seo-checklist.md) — Rank Math meta keys, Schema 3 types, OfferCatalog
-- [`references/pitfalls.md`](../references/pitfalls.md) — Astra entry-title H1 duplicate, slug freeze, dead pillar links
+- [`references/pitfalls.md`](../references/pitfalls.md) — Astra entry-title H1 (cả duplicate + missing), WebFetch unreliable, plugin redundancy
+- [`references/wp-abilities.md`](../references/wp-abilities.md) — direct REST ability cho Tier 1 thay PHP backend dump qua SSH
 - [`workflows/clone-transform-pattern.md`](clone-transform-pattern.md) — bulk build → audit cycle
+- [`workflows/session-distillation.md`](session-distillation.md) — distill audit insights ngược về skill

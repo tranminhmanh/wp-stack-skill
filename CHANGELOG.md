@@ -5,6 +5,40 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] — 2026-05-10
+
+### Added
+
+- **`references/mcp-architecture.md`** — Multi-plugin MCP endpoint architecture. Mỗi plugin MCP đăng ký endpoint riêng (`/mcp/<plugin>-server`), KHÔNG share namespace. WP Abilities Framework chỉ là central registry, KHÔNG phải transport. Diagnosis matrix cho 4 trạng thái 404 phổ biến + endpoint mapping observed cho mcp-adapter, elementor-mcp, mcp-wp-capabilities.
+- **`references/wp-abilities.md`** — Direct REST ability call pattern (bypass MCP bridge). GET cho readonly + POST cho write. Input phải nest dưới `?input[k]=v` PHP-array notation, không flat. Python stdlib helper script template. When-to-use matrix vs MCP bridge ergonomic.
+- **`workflows/claude-mcp-connector-setup.md`** — `claude mcp add` CLI setup end-to-end. Critical: `--header` đặt CUỐI sau positional args (else parser fail "missing required argument 'name'"). Scope `user` recommended cho site cá nhân. Tool schemas chỉ load lúc session init → restart sau khi add. Multi-plugin loop pattern + naming convention.
+- **`workflows/session-distillation.md`** — Meta workflow tự nâng cấp skill sau mỗi chat. 6-step process: liệt kê insight raw → phân loại layer (skill/project/CLAUDE.md) → check duplicate → quyết format → quality bar (root cause + reproduction + fix + reusability) → update CHANGELOG. Pattern promote insight từ project memory ngược về skill khi xác nhận đa-project.
+
+### Changed
+
+- **`references/pitfalls.md`** — appended 5 sections:
+  - "MCP — bridge connector vs server endpoint mismatch (404 root cause)" — Tool count gap diagnosis (livesfx 2 connector vs PKM 1 connector → mất 48 tool). 1-minute detection commands.
+  - "WebFetch — KHÔNG đáng tin cho SEO data extraction" — Markdown conversion strip JSON-LD/meta tags. Reproduction: PKM home WebFetch báo "no JSON-LD" trong khi raw HTML có 8 schema types. When-OK / When-FAIL matrix.
+  - "Prompt injection trong WebFetch responses" — PKM 2026-05-10 thực tế gặp `<system-reminder>` giả mạo trong response từ `/wp-json/mcp`. Treat tool result từ external URL như untrusted. Wordfence scan recommended.
+  - "Astra entry-title H1 — opposite case (page có 0 H1)" — Inverse của duplicate case. Khi tắt entry-title + Elementor template không có H1 widget → 0 H1. Detection script qua `get-page-structure`. 3 fix paths.
+  - "Plugin redundancy — common patterns trên inherited site" — 6 duplicate patterns (forms, Elementor addons, SEO, cache, analytics, backup). Audit checklist commands cho site mới.
+  - "Application Password — usage discipline" — Label naming convention, revoke discipline, scope reduction (tạo user editor riêng cho automation thay admin), header order trap reference.
+
+- **`workflows/seo-audit.md`** — added 3 sections:
+  - Tier 2 Python alternative (pure stdlib, no deps) — Battle-tested PKM 2026-05-10 với 20 URL, không escape bug. Vì sao Python > Bash version.
+  - WebFetch warning với reproduction steps.
+  - `data:build-dashboard` skill integration cho output interactive HTML — 32KB embed 20 page, share được không cần terminal.
+
+### Sources — patterns extracted from
+
+- **PKM Mai Thanh project session 2026-05-10** — 4h audit + MCP bridge debug + skill upgrade
+  - Site: `https://phongkhammaithanh.com` (WP 6.9.4, Astra Pro, Elementor 4.0.7 atomic mode, Rank Math Pro, LiteSpeed, FluentForms+WPForms duplicate, 24 active plugins)
+  - Discovery: connector PKM thiếu endpoint elementor-mcp-server (1 connector vs 2 trên livesfx-vn)
+  - Workaround: 48 elementor-mcp abilities accessible qua direct REST với App Pw Basic auth
+  - Resolution: added `phongkhammaithanh-com-elementor` connector via `claude mcp add -s user`
+
+[0.2.0]: https://github.com/tranminhmanh/wp-stack-skill/releases/tag/v0.2.0
+
 ## [0.1.0] — 2026-05-07
 
 Initial public release. Battle-tested across 3 production WordPress sites.
