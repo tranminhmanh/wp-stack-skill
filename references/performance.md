@@ -1,109 +1,109 @@
 # Performance Optimization Workflow
 
-## Quy trình debug site chậm
+## Diagnosing a slow site
 
 1. Run Lighthouse mobile + desktop
 2. Run GTmetrix
 3. Run PageSpeed Insights
-4. Identify bottleneck: LCP / FCP / CLS / TBT
+4. Identify the bottleneck: LCP / FCP / CLS / TBT
 
-## Fix theo bottleneck
+## Fixes by bottleneck
 
-### LCP chậm (>2.5s)
+### LCP slow (>2.5s)
 
-- Hero image: convert WebP/AVIF, lazy load OFF cho hero
+- Hero image: convert to WebP/AVIF, lazy load OFF for the hero
 - Preload hero image: `<link rel="preload" as="image">`
-- Preload font chính: woff2 với crossorigin
+- Preload primary font: woff2 with `crossorigin`
 - Server-side cache: WP Rocket page cache ON
 - CDN: Cloudflare proxied
-- Database: optimize tables (Rank Math có tool)
+- Database: optimize tables (Rank Math has a tool)
 
-### CLS cao (>0.1)
+### CLS high (>0.1)
 
-- Set width/height cho mọi `<img>` (Elementor tự làm nếu image_size set)
-- Font-display: swap → có thể gây CLS, dùng `optional` cho non-critical
-- Reserve space cho ads/embed
-- KHÔNG inject content above existing content
+- Set width/height on every `<img>` (Elementor does this automatically if `image_size` is set)
+- `font-display: swap` can cause CLS — use `optional` for non-critical fonts
+- Reserve space for ads / embeds
+- Do NOT inject content above existing content
 
-### TBT cao (>200ms)
+### TBT high (>200ms)
 
-- Asset CleanUp: disable script không cần per page
-- Defer JavaScript: WP Rocket có tool
-- Combine CSS/JS: WP Rocket
+- Asset CleanUp: disable scripts not needed per page
+- Defer JavaScript: WP Rocket has a tool
+- Combine CSS / JS: WP Rocket
 - Remove unused CSS: WP Rocket Pro
 
-## WP Rocket settings chuẩn
+## WP Rocket standard settings
 
-- File Optimization: minify CSS, minify JS, combine off (HTTP/2)
-- Media: lazy load images, lazy load iframes/videos, replace YouTube với preview
-- Cache: enable cache for mobile, separate cache mobile, cache lifespan 10 hours
+- File Optimization: minify CSS, minify JS, combine OFF (HTTP/2)
+- Media: lazy load images, lazy load iframes/videos, replace YouTube with preview
+- Cache: enable cache for mobile, separate mobile cache, lifespan 10 hours
 - Database: cleanup post revisions weekly, cleanup transients daily
-- CDN: Cloudflare addon ON nếu dùng
+- CDN: Cloudflare addon ON if using
 
 ## ShortPixel settings
 
-- Compression: Glossy (balance quality/size)
+- Compression: Glossy (balance quality / size)
 - Image format: WebP + AVIF fallback
 - Resize on upload: max 2560px width
-- Bulk optimize lúc đêm
+- Bulk-optimize at night
 
 ## Cloudflare Free settings
 
 - SSL: Full (strict)
 - Always Use HTTPS: ON
-- Auto Minify: HTML/CSS/JS
+- Auto Minify: HTML / CSS / JS
 - Brotli: ON
 - Browser Cache TTL: 1 year (static assets)
 
-## Test sau optimize
+## Test after optimizing
 
 ```bash
 npx lighthouse https://<site> --view --preset=desktop
 npx lighthouse https://<site> --view --preset=perf
 ```
 
-Target sau optimize:
+Targets after optimization:
 - Mobile: 85+
 - Desktop: 95+
 - LCP: <2.5s
 - CLS: <0.1
 - INP: <200ms
 
-## Bẫy WP Rocket hay gặp
+## Common WP Rocket pitfalls
 
-### Combine CSS vỡ layout
-Disable Combine CSS nếu Elementor render lỗi. HTTP/2 đã đủ tốt không cần combine.
+### Combine CSS breaks layout
+Disable Combine CSS if Elementor renders broken. HTTP/2 is good enough; combining is unnecessary.
 
-### Lazy load hero image gây LCP cao
-Hero image: add CSS class `no-lazy` hoặc disable lazy load cho `.elementor-section:first-of-type img`.
+### Lazy-loaded hero image causes high LCP
+Hero image: add CSS class `no-lazy` or disable lazy load for `.elementor-section:first-of-type img`.
 
-### Cache không clear sau MCP edit
-WP Rocket cache page-level. Sau Claude Code edit qua MCP:
+### Cache not clearing after MCP edit
+WP Rocket caches at the page level. After a Claude Code MCP edit:
 - Settings → Cache → Clear Cache → All
-- Hoặc gọi MCP `clear_elementor_cache` (chỉ clear Elementor, vẫn cần clear WP Rocket manual)
+- Or call MCP `clear_elementor_cache` (only clears Elementor; you still need to manually clear WP Rocket)
 
-## Bẫy Cloudflare hay gặp
+## Common Cloudflare pitfalls
 
-### Always Online cache phiên bản cũ vô thời hạn
-Disable nếu không cần. Hoặc Purge Everything sau deploy.
+### Always Online caches an old version forever
+Disable if not needed. Or Purge Everything after deploy.
 
-### Mixed content sau migrate HTTP→HTTPS
+### Mixed content after HTTP→HTTPS migration
 SSL: Full (strict) + Auto HTTPS Rewrites ON + Always Use HTTPS ON.
-DB còn URL http://: dùng `wp search-replace` (xem deployment.md).
+DB still has http:// URLs: use `wp search-replace` (see `deployment.md`).
 
 ## Cache invalidation playbook by host
 
-Sau MCP/PHP write op, page có thể vẫn render version cũ vì cache server-side. Workaround vary by host:
+After an MCP / PHP write op, the page may still serve the old version due to server-side cache. Workaround varies by host:
 
 | Host / cache | Working method | NOT working |
 |---|---|---|
-| WP Rocket | Settings → Cache → Clear Cache → All; hoặc REST `/wp-json/wp-rocket/v1/clear-all` | — |
+| WP Rocket | Settings → Cache → Clear Cache → All; or REST `/wp-json/wp-rocket/v1/clear-all` | — |
 | LiteSpeed Cache (LSCWP self-hosted) | `\LiteSpeed\Purge::purge_all()` PHP; REST `X-LiteSpeed-Purge: *` | — |
-| **LSCWP trên AZDIGI shared host (LSWS server-level)** | **Plugin deactivate → 1s → reactivate** | REST purge headers, `purge_all()`, WP-CLI cache purge — server-level cache ignore WP-level signal |
+| **LSCWP on shared host with LSWS server-level cache** | **Plugin deactivate → 1s → reactivate** | REST purge headers, `purge_all()`, WP-CLI cache purge — server-level cache ignores WP-level signals |
 | Cloudflare | API `purge_cache` endpoint; UI Purge Everything | — |
 | Object cache (Redis) | `wp cache flush`; `redis-cli FLUSHDB` | — |
 
-**LSCWP shared host workaround** (chỉ plugin toggle hoạt động):
+**LSCWP shared-host workaround** (only the plugin toggle works):
 ```bash
 URL="$WP_SITE/wp-json/wp/v2/plugins/litespeed-cache/litespeed-cache"
 curl -u "$WP_USER:$WP_PASS" -X POST "$URL" -d '{"status":"inactive"}'
@@ -111,39 +111,39 @@ sleep 1
 curl -u "$WP_USER:$WP_PASS" -X POST "$URL" -d '{"status":"active"}'
 ```
 
-Suspected root cause: server-level LSWS cache không nghe WordPress-level purge signal — chỉ plugin lifecycle hook (deactivate) trigger được host's cache invalidation.
+Suspected root cause: server-level LSWS cache does not listen to WordPress-level purge signals — only the plugin lifecycle hook (deactivate) triggers the host's cache invalidation.
 
-### LiteSpeed: 2 invalidation paths phải phân biệt rõ
+### LiteSpeed: 2 invalidation paths to keep distinct
 
-LiteSpeed cache có 2 path riêng — confusion gây debug nhầm:
+LiteSpeed cache has two separate paths — confusion causes mis-debugging:
 
 | Path | Trigger | Status |
 |---|---|---|
-| **Auto-purge per-post** | `save_post` hook fires (any post update through Elementor save handler) | ✅ Works automatically — page cache invalidated ngay khi save |
-| **Manual purge tool/API** | `\LiteSpeed\Purge::purge_all()`, REST `X-LiteSpeed-Purge`, plugin "Purge All" button | ❌ Broken trên AZDIGI shared host — chỉ plugin toggle workaround |
+| **Auto-purge per-post** | `save_post` hook fires (any post update through the Elementor save handler) | ✅ Works automatically — page cache invalidated as soon as the save fires |
+| **Manual purge tool / API** | `\LiteSpeed\Purge::purge_all()`, REST `X-LiteSpeed-Purge`, plugin "Purge All" button | ❌ Broken on shared hosts — only the plugin toggle workaround works |
 
 **Practical implication**:
-- MCP write trigger `save_post` (vd `mcp_batch_update`, `update_widget`, `update_element`) → cache tự xoá → frontend hit fresh data ngay.
-- MCP write CHỈ update meta thẳng (vd `update_page_from_file`) → KHÔNG trigger save_post → cache cũ vẫn serve. Phải follow-up bằng `batch_update` (xem [`elementor-mcp.md` "`update_page_from_file` không regen post_content"](elementor-mcp.md)).
+- MCP writes that trigger `save_post` (e.g. `mcp_batch_update`, `update_widget`, `update_element`) → cache clears automatically → frontend hits fresh data immediately.
+- MCP writes that update meta directly (e.g. `update_page_from_file`) → do NOT trigger `save_post` → cache still serves the old version. Follow up with `batch_update` (see [`elementor-mcp.md` "`update_page_from_file` does not regen post_content"](elementor-mcp.md)).
 
 **Verify cache state**:
 ```bash
 curl -sI "https://site.com/page/" | grep -i x-litespeed
-# x-litespeed-cache: hit       → đang serve cache cũ
-# x-litespeed-cache: miss      → server generated fresh, sẽ cache lại
+# x-litespeed-cache: hit       → serving old cache
+# x-litespeed-cache: miss      → server generated fresh, will cache next
 ```
 
-## Pre-deploy / pre-iteration cache clear ritual
+## Pre-deploy / pre-iteration cache-clear ritual
 
-Khi build/edit qua MCP rồi screenshot/test ngay:
+When building / editing via MCP and immediately screenshotting / testing:
 ```bash
 # 1. Server-side
 rm -rf wp-content/cache/* wp-content/uploads/elementor/css/*
 docker exec <container> php -r 'opcache_reset();'
 
-# 2. Plugin cache (chọn theo host)
+# 2. Plugin cache (pick by host)
 # WP Rocket: WP-CLI rocket clean --confirm
-# LSCWP shared host: plugin toggle (xem trên)
+# LSCWP shared host: plugin toggle (see above)
 
 # 3. Browser
 # URL?fresh=$(date +%s%N) + Cmd+Shift+R

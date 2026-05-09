@@ -2,9 +2,9 @@
 /**
  * og-image-generator.php — PHP GD OG image generator + WP attachment integration.
  *
- * Use case: programmatic Open Graph image generation 1200×630 với Vietnamese
- * diacritics-safe text overlay. Branded consistent across N pages without
- * Photoshop/Canva manual work.
+ * Use case: programmatic Open Graph image generation 1200×630 with
+ * diacritic-safe text overlay (Vietnamese, Polish, Czech, Turkish, etc.).
+ * Branded consistency across N pages without Photoshop / Canva manual work.
  *
  * Reference: workflows/og-image-generation.md
  *
@@ -14,7 +14,7 @@
 // ---- 1. Image generation primitives ----
 
 /**
- * PHP GD KHÔNG có native rounded rectangle. Helper compose từ rect + 4 ellipse corners.
+ * PHP GD has no native rounded rectangle. Helper composes from rect + 4 ellipse corners.
  */
 function imagefilledroundedrectangle($im, int $x1, int $y1, int $x2, int $y2, int $r, int $color): void {
     imagefilledrectangle($im, $x1 + $r, $y1, $x2 - $r, $y2, $color);
@@ -26,7 +26,7 @@ function imagefilledroundedrectangle($im, int $x1, int $y1, int $x2, int $y2, in
 }
 
 /**
- * Vertical gradient between 2 RGB colors.
+ * Vertical gradient between two RGB colors.
  */
 function gradient_fill($im, int $width, int $height, array $rgb_top, array $rgb_bottom): void {
     for ($y = 0; $y < $height; $y++) {
@@ -42,7 +42,7 @@ function gradient_fill($im, int $width, int $height, array $rgb_top, array $rgb_
 // ---- 2. Style A: PHP GD vector-only ----
 
 /**
- * Generate OG image from PHP GD primitives (no AI).
+ * Generate an OG image from PHP GD primitives only (no AI).
  * Cheap, fast, but limited visual richness.
  */
 function generate_og_php_only(string $output_path, array $config): void {
@@ -51,10 +51,10 @@ function generate_og_php_only(string $output_path, array $config): void {
     $im = imagecreatetruecolor($width, $height);
     imagesavealpha($im, true);
 
-    // Layer 1: Vertical gradient navy_dark → navy_med
+    // Layer 1: vertical gradient navy_dark → navy_med
     gradient_fill($im, $width, $height, [10, 37, 64], [30, 58, 92]);
 
-    // Layer 2: Diagonal accent lines (alpha)
+    // Layer 2: diagonal accent lines (alpha)
     $accent = imagecolorallocatealpha($im, 0, 163, 181, 110);
     imagesetthickness($im, 2);
     for ($i = 0; $i < 8; $i++) {
@@ -62,7 +62,7 @@ function generate_og_php_only(string $output_path, array $config): void {
         imageline($im, $x_start, 0, $x_start + $height, $height, $accent);
     }
 
-    // Layer 3: Container ship silhouette
+    // Layer 3: container ship silhouette
     $silhouette = imagecolorallocate($im, 255, 255, 255);
     $hull = [800, 420, 1180, 420, 1160, 480, 820, 480];
     imagefilledpolygon($im, $hull, $silhouette);
@@ -97,8 +97,8 @@ function generate_og_php_only(string $output_path, array $config): void {
 // ---- 3. Style B: AI background + PHP overlay ----
 
 /**
- * Overlay branded text onto AI-generated background photo.
- * Background photo must be 1200×630 (or larger, will crop center).
+ * Overlay branded text onto an AI-generated background photo.
+ * Background photo must be 1200×630 (or larger — will crop center).
  */
 function overlay_text_on_bg(string $bg_path, string $output_path, array $config): void {
     $width = 1200;
@@ -111,7 +111,7 @@ function overlay_text_on_bg(string $bg_path, string $output_path, array $config)
     $bg = imagecreatefromjpeg($bg_path) ?: imagecreatefrompng($bg_path);
     if (!$bg) throw new RuntimeException("Failed to decode bg image");
 
-    // Resize/crop to 1200×630 (center crop)
+    // Resize / crop to 1200×630 (center crop)
     $bg_w = imagesx($bg);
     $bg_h = imagesy($bg);
     $im = imagecreatetruecolor($width, $height);
@@ -180,20 +180,20 @@ function overlay_text_on_bg(string $bg_path, string $output_path, array $config)
     imagedestroy($im);
 }
 
-// ---- 4. WP attachment integration cho Rank Math og:image ----
+// ---- 4. WP attachment integration for Rank Math og:image ----
 
 /**
- * Register PNG file as WordPress attachment + bind Rank Math og:image meta.
+ * Register a PNG file as a WordPress attachment + bind Rank Math og:image meta.
  *
- * CRITICAL: Rank Math REQUIRE attachment ID (không chỉ URL) để render og:image
- * properly. Phải set CẢ `*_image_id` + `*_image` URL.
+ * CRITICAL: Rank Math REQUIRES the attachment ID (not just a URL) to render
+ * og:image properly. You must set BOTH `*_image_id` and `*_image` URL.
  */
 function register_og_image_for_post(int $post_id, string $file_path, string $alt_text): int {
     require_once ABSPATH . 'wp-admin/includes/image.php';
     require_once ABSPATH . 'wp-admin/includes/file.php';
     require_once ABSPATH . 'wp-admin/includes/media.php';
 
-    // Move file vào wp-content/uploads if not already there
+    // Move file into wp-content/uploads if not already there
     $upload_dir = wp_upload_dir();
     if (!str_starts_with($file_path, $upload_dir['basedir'])) {
         $filename = basename($file_path);
@@ -227,14 +227,14 @@ function register_og_image_for_post(int $post_id, string $file_path, string $alt
     update_post_meta($post_id, 'rank_math_twitter_image_id', $attach_id);
     update_post_meta($post_id, 'rank_math_twitter_image', $url);
 
-    // Featured image (double coverage — fallback if og meta missed)
+    // Featured image (double coverage — fallback if og meta is missed)
     set_post_thumbnail($post_id, $attach_id);
 
     return $attach_id;
 }
 
 /**
- * Tier 2: Inherit parent OG cho subpages.
+ * Tier 2: inherit parent OG for subpages.
  */
 function inherit_parent_og(array $parent_to_attach_map): int {
     $count = 0;
@@ -261,7 +261,7 @@ function inherit_parent_og(array $parent_to_attach_map): int {
 }
 
 /**
- * Tier 3: Default site OG fallback (Rank Math global option).
+ * Tier 3: default site OG fallback (Rank Math global option).
  */
 function set_default_site_og(int $homepage_attach_id): void {
     $rm_titles = get_option('rank-math-options-titles', []);
@@ -280,30 +280,30 @@ function set_default_site_og(int $homepage_attach_id): void {
 require_once '/var/www/html/wp-load.php';
 require_once __DIR__ . '/og-image-generator.php';
 
-// Tier 1: Generate unique OG cho pillar
+// Tier 1: generate unique OG for a pillar
 overlay_text_on_bg(
     '/tmp/og-raw/pillar-A-bg.jpg',     // AI-generated background
     '/tmp/og-output/og-pillar-A.png',
     [
-        'badge' => 'TUYẾN A',
-        'h1' => 'Vận chuyển A',
-        'h2' => 'Cước cạnh tranh, transit nhanh',
+        'badge' => 'ROUTE A',
+        'h1' => 'Shipping route A',
+        'h2' => 'Competitive rates, fast transit',
         'tagline' => 'B2B logistics specialist',
-        'cta' => 'Báo giá miễn phí',
-        'url' => 'example.com/tuyen-a/',
+        'cta' => 'Free quote',
+        'url' => 'example.com/route-a/',
     ]
 );
 
 // Register + bind
 $pillar_a_id = 260;
-$attach_a = register_og_image_for_post($pillar_a_id, '/tmp/og-output/og-pillar-A.png', 'Vận chuyển tuyến A — Brand');
+$attach_a = register_og_image_for_post($pillar_a_id, '/tmp/og-output/og-pillar-A.png', 'Shipping route A — Brand');
 
-// Tier 2: Inherit cho subpages
+// Tier 2: inherit for subpages
 inherit_parent_og([
     260 => $attach_a,
     459 => $attach_b,  // ...
 ]);
 
-// Tier 3: Default fallback
+// Tier 3: default fallback
 set_default_site_og($homepage_attach_id);
 */

@@ -9,28 +9,28 @@
       "type": "http",
       "url": "https://<site>/wp-json/mcp/elementor-mcp-server",
       "headers": {
-        "Authorization": "Basic <base64 của username:app-password>"
+        "Authorization": "Basic <base64 of username:app-password>"
       }
     }
   }
 }
 ```
 
-Sinh base64: `echo -n "admin:xxxx xxxx xxxx xxxx xxxx xxxx" | base64`
+Generate the base64: `echo -n "admin:xxxx xxxx xxxx xxxx xxxx xxxx" | base64`
 
-⚠️ Username là **login slug thực** (admin/email-slug), KHÔNG phải label của Application Password.
-⚠️ App password phải GIỮ NGUYÊN khoảng trắng.
+⚠️ The username is the **actual login slug** (admin / email-slug), NOT the Application Password label.
+⚠️ The app password must KEEP the spaces.
 
-## Quy tắc params (BẪY THƯỜNG GẶP)
+## Param rules (common traps)
 
-1. `add-container` lấy `settings: {}` object
-2. `add-*` widget shortcuts (add-heading, add-button) lấy **flat params**, KHÔNG nested settings
-3. `update-widget` / `update-element` dùng `settings: {}` object
-4. Typography keys phải có `typography_typography: "custom"` mới active
-5. Background phải `background_background: "classic"` trước khi set color
-6. Flexbox keys prefix `flex_*`: flex_direction, flex_justify_content, flex_align_items, flex_gap, flex_wrap
+1. `add-container` takes `settings: {}` object
+2. `add-*` widget shortcuts (add-heading, add-button) take **flat params**, NOT nested settings
+3. `update-widget` / `update-element` use `settings: {}` object
+4. Typography keys require `typography_typography: "custom"` to activate
+5. Background requires `background_background: "classic"` before setting color
+6. Flexbox keys are prefixed `flex_*`: `flex_direction`, `flex_justify_content`, `flex_align_items`, `flex_gap`, `flex_wrap`
 
-## Container chuẩn (section)
+## Standard container (section)
 
 ```
 add-container(
@@ -49,7 +49,7 @@ add-container(
 )
 ```
 
-## Container 3-column grid
+## 3-column grid container
 
 ```
 add-container(
@@ -72,12 +72,12 @@ add-container(
 add-heading(
   page_id: 123,
   parent_id: <container_id>,
-  title: "Tiêu đề",
+  title: "Title",
   header_size: "h1",
   align: "center",
   title_color: "#FFFFFF",
   typography_typography: "custom",
-  typography_font_family: "Be Vietnam Pro",
+  typography_font_family: "Inter",
   typography_font_size: {size: 56, unit: "px"},
   typography_font_size_tablet: {size: 40, unit: "px"},
   typography_font_size_mobile: {size: 32, unit: "px"},
@@ -91,8 +91,8 @@ add-heading(
 add-button(
   page_id: 123,
   parent_id: <container_id>,
-  text: "Yêu cầu báo giá",
-  link: {url: "/lien-he", is_external: false},
+  text: "Get a quote",
+  link: {url: "/contact", is_external: false},
   size: "lg",
   background_color: "#FF4500",
   hover_color: "#FFFFFF",
@@ -119,49 +119,49 @@ add-image(
 add-form(
   page_id: 123,
   parent_id: <container_id>,
-  form_name: "Báo giá",
+  form_name: "Quote",
   form_fields: [
-    {field_type: "text", field_label: "Họ tên", required: true},
-    {field_type: "tel", field_label: "Số điện thoại", required: true},
-    {field_type: "email", field_label: "Email", required: true},
-    {field_type: "date", field_label: "Ngày sự kiện", required: true},
-    {field_type: "select", field_label: "Loại dịch vụ",
+    {field_type: "text",     field_label: "Name",        required: true},
+    {field_type: "tel",      field_label: "Phone",       required: true},
+    {field_type: "email",    field_label: "Email",       required: true},
+    {field_type: "date",     field_label: "Event date",  required: true},
+    {field_type: "select",   field_label: "Service type",
      field_options: "Option 1\nOption 2\nOption 3"},
-    {field_type: "textarea", field_label: "Mô tả thêm", required: false}
+    {field_type: "textarea", field_label: "Notes",       required: false}
   ],
   email_to: "info@<domain>",
-  button_text: "Gửi yêu cầu"
+  button_text: "Send"
 )
 ```
 
 ## Element ID format
 
-Element ID Elementor trả về: 7 ký tự hex (vd: `f8d1545`).
-LƯU lại sau mỗi add-* call để dùng cho update/move/delete sau.
+The element ID returned by Elementor is 7 hex characters (e.g. `f8d1545`).
+SAVE it after every `add-*` call so you can use it for later update / move / delete.
 
-## Verify pattern (BẮT BUỘC)
+## Verify pattern (REQUIRED)
 
-Sau mỗi section quan trọng:
+After each major section:
 ```
 get-page-structure(page_id: 123)
 ```
 
-Sau loạt edit, clear cache:
+After a batch of edits, clear cache:
 ```
 clear_elementor_cache(page_id: 123)
 ```
 
-## Backup trước edit production
+## Backup before editing production
 
 ```
 backup_elementor_data(page_id: 123)
 ```
 
-Plugin lưu vào meta riêng, restore được nếu hỏng.
+The plugin saves to a separate meta key, so you can restore if something breaks.
 
-## Pin npm version trong .mcp.json
+## Pin npm version in `.mcp.json`
 
-`npx elementor-mcp` resolve khác version tùy npm cache state. Có lúc pull v1.0.0 (cũ, thiếu tools), lúc pull v1.4.x (đủ tools).
+`npx elementor-mcp` resolves to a different version depending on npm cache state. Sometimes it pulls v1.0.0 (old, missing tools), sometimes v1.4.x (full toolset).
 
 ```json
 {
@@ -174,19 +174,19 @@ Plugin lưu vào meta riêng, restore được nếu hỏng.
 }
 ```
 
-Hoặc lock cụ thể: `"elementor-mcp@1.4.2"`. Sau update `.mcp.json`, **reload Claude Code session** mới load được.
+Or lock a specific version: `"elementor-mcp@1.4.2"`. After editing `.mcp.json`, **reload the Claude Code session** to pick up the change.
 
 ## File format conventions (`update_page_from_file`, `download_page_to_file`)
 
-`update_page_from_file` chấp nhận 2 format, từ chối 1:
+`update_page_from_file` accepts 2 formats and rejects 1:
 
 | Format | Accepted | Note |
 |---|---|---|
 | Plain JSON array `[{...},{...}]` | ✅ | `json.dump(elements_array, f)` |
-| Full WP REST response wrapper (output của `download_page_to_file`) | ✅ | `{"id":N, "meta":{"_elementor_data":[...]}, ...}` |
-| Object wrapper `{"_elementor_data": [...]}` | ❌ | MCP trả `true`, REST trả 200, postmeta saved as string → render 500 fatal `Undefined array key "elType"` |
+| Full WP REST response wrapper (output of `download_page_to_file`) | ✅ | `{"id":N, "meta":{"_elementor_data":[...]}, ...}` |
+| Object wrapper `{"_elementor_data": [...]}` | ❌ | MCP returns `true`, REST returns 200, postmeta saved as a string → render 500 fatal `Undefined array key "elType"` |
 
-**Recipe push payload từ Python**:
+**Recipe for pushing payload from Python**:
 ```python
 import json
 elements_array = build_sections()
@@ -194,67 +194,67 @@ with open('/tmp/page-43.json', 'w') as f:
     json.dump(elements_array, f, ensure_ascii=False)  # plain array, NOT wrapped
 ```
 
-## Verify pattern (BẮT BUỘC mỗi write op)
+## Verify pattern (REQUIRED after every write op)
 
-MCP `return true` ≠ render OK. Sau mỗi `update_page_*`, `update-widget`, plugin toggle, option set:
+MCP `return true` ≠ render OK. After every `update_page_*`, `update-widget`, plugin toggle, or option set:
 
 ```bash
 URL="$WP_SITE/<path>?cb=$(date +%s)"
 curl -sI "$URL" | head -1                                         # expect HTTP 200
-curl -s "$URL" | grep -c '<title>WordPress.*Lỗi\|wp-die-message'  # expect 0
+curl -s "$URL" | grep -c '<title>WordPress.*Error\|wp-die-message' # expect 0
 ```
 
-Nếu fatal → rollback ngay (`backup_elementor_data` trước; hoặc dùng `wp-fix.php` recovery cho site-wide crash).
+If fatal → roll back immediately (`backup_elementor_data` first; or use `wp-fix.php` for a site-wide crash).
 
-KHÔNG batch nhiều update rồi mới verify.
+DO NOT batch many updates and then verify at the end.
 
-## Sau MCP create page → regen post CSS
+## After MCP create page → regenerate post CSS
 
-Page tạo qua API/MCP có thể thiếu `--flex-basis` CSS variables vì Elementor chỉ generate CSS khi user set column width trong Editor UI. Symptom: 4-col layout không có width, render ngẫu nhiên.
+A page created via API / MCP may be missing `--flex-basis` CSS variables because Elementor only generates that CSS when the user sets column width in the Editor UI. Symptom: 4-column layout has no widths and renders randomly.
 
-**Fix**: chạy CSS regeneration:
+**Fix**: trigger CSS regeneration:
 ```php
-\Elementor\Core\Files\CSS\Post::create($id)->update();
-// hoặc
-delete_post_meta($id, '_elementor_css');
+\Elementor\Core\Files\CSS\Post::create($post_id)->update();
+// or
+delete_post_meta($post_id, '_elementor_css');
 \Elementor\Plugin::$instance->files_manager->clear_cache();
 ```
 
-Hoặc visit page trong Elementor Editor rồi save (trigger CSS gen).
+Or open the page in the Elementor Editor and save (which triggers CSS regen).
 
 ## Widget schema gotchas
 
-Schema không consistent giữa các widget — phải `get-widget-schema` mỗi lần:
+The schema is not consistent across widgets — always `get-widget-schema` first:
 
-| Widget / setting | Format đúng | Trap |
+| Widget / setting | Correct format | Trap |
 |---|---|---|
-| Counter `typography_number_typography` | `"yes"` | Không phải `"custom"` (heading dùng `"custom"`) |
-| Heading `typography_typography` | `"custom"` | Không phải `"yes"` |
-| Background `background_background` | `"classic"` | Phải set trước khi đặt color |
-| Testimonial Carousel pagination | `pagination: "bullets"` + `loop: "yes"` | Không phải `navigation: "dots"` + `infinite: "yes"` |
-| Testimonial Carousel `image_border_radius` | `{size, unit}` simple | Không phải `{top,right,bottom,left}` như image widget |
-| nav-menu trong header flex row | `_flex_size: "grow"` | Counter-intuitive — `"shrink"` làm `<ul>` items wrap dòng |
-| Pro Form `email_subject` field ref | `[field id="field_4"]` | Không phải `{{field_4}}` hay `[field_label]`. IDs auto từ 0 |
-| Pro Form field `required` | `"yes"` | Không phải `"true"` (schema enum chỉ accept `["yes"]`) |
-| Counter `ending_number` | integer only | `26.5` reject. Round trước khi gửi |
-| Image responsive width | `width`, `width_tablet`, `width_mobile` (3 fields) | Không phải 1 field với responsive object |
-| Counter icon | emoji 📅⚓⚡ trực tiếp | FA unicode `\\f5d2` không render reliably trong Elementor |
+| Counter `typography_number_typography` | `"yes"` | Not `"custom"` (heading uses `"custom"`) |
+| Heading `typography_typography` | `"custom"` | Not `"yes"` |
+| Background `background_background` | `"classic"` | Required before setting color |
+| Testimonial Carousel pagination | `pagination: "bullets"` + `loop: "yes"` | Not `navigation: "dots"` + `infinite: "yes"` |
+| Testimonial Carousel `image_border_radius` | `{size, unit}` simple form | Not `{top,right,bottom,left}` like image widget |
+| nav-menu in a flex-row header | `_flex_size: "grow"` | Counter-intuitive — `"shrink"` makes the `<ul>` items wrap onto a new line |
+| Pro Form `email_subject` field ref | `[field id="field_4"]` | Not `{{field_4}}` or `[field_label]`. IDs auto-generated from 0 |
+| Pro Form field `required` | `"yes"` | Not `"true"` (schema enum only accepts `["yes"]`) |
+| Counter `ending_number` | integer only | `26.5` rejected. Round before sending |
+| Image responsive width | `width`, `width_tablet`, `width_mobile` (3 fields) | Not one field with a responsive object |
+| Counter icon | emoji (📅⚓⚡) directly | FA Unicode `\\f5d2` does not render reliably in Elementor |
 
-**`add-price-list` schema rejected**: `price_list` array of objects không pass validation. Workaround: HTML widget với custom CSS class `.sa-price-table` + `.sa-price-row`.
+**`add-price-list` schema rejected**: a `price_list` array of objects fails validation. Workaround: HTML widget with custom CSS classes `.x-price-table` + `.x-price-row`.
 
 ## Container & structure quirks
 
 ### `add-container` cells append at INDEX 0 (FILO)
 
-Sequential adds → DOM order ngược. Add 5 cells 1→5 → DOM order 5→4→3→2→1.
+Sequential adds → DOM order is reversed. Adding 5 cells 1→5 → DOM order 5→4→3→2→1.
 
-**Fix**: dùng `reorder-elements` với `container_id` + `element_ids` array đúng order sau khi add xong.
+**Fix**: use `reorder-elements` with `container_id` + `element_ids` array in the right order after all adds.
 
-⚠️ `reorder-elements` schema: dùng `container_id` (không phải `parent_id`) + `element_ids` (không phải `ordered_ids`). Schema trap.
+⚠️ `reorder-elements` schema: use `container_id` (not `parent_id`) + `element_ids` (not `ordered_ids`). Schema trap.
 
-### `update-page-settings` works on Elementor kit post
+### `update-page-settings` works on the Elementor kit post
 
-Kit chỉ là regular post type `elementor_library` với `_elementor_template_type: kit`. Có thể edit `container_width`, `custom_css`, `space_between_widgets` qua MCP:
+The kit is a regular post type `elementor_library` with `_elementor_template_type: kit`. You can edit `container_width`, `custom_css`, `space_between_widgets` via MCP:
 ```
 update-page-settings(
   post_id: <option elementor_active_kit>,
@@ -264,11 +264,16 @@ update-page-settings(
   }
 )
 ```
-→ áp dụng global cho mọi page. Không cần thông qua Customizer UI.
+→ applies globally to every page. No need to go through the Customizer UI.
 
-### `update-page-settings` KHÔNG update post fields
+### `update-page-settings` does NOT update post fields
 
-Returns `success: true` nhưng `post_status`, `post_parent`, `post_name` KHÔNG apply. Phải dùng `wp_update_post()` PHP trực tiếp qua docker exec / SSH.
+Returns `success: true` but `post_status`, `post_parent`, `post_name` do NOT actually apply. You have to call `wp_update_post()` directly via docker exec / SSH.
+
+### `add-form` schema enums
+
+- `required`: `"yes"` (NOT `"true"`)
+- `field_type`: `"text"`, `"tel"`, `"email"`, `"date"`, `"select"`, `"textarea"`, ...
 
 ### `grid_gaps` vs `gap` naming inconsistency
 
@@ -277,58 +282,58 @@ Returns `success: true` nhưng `post_status`, `post_parent`, `post_name` KHÔNG 
 | `grid` | `grid_gaps` | `{column, row, unit, size, isLinked}` |
 | `flex` | `gap` | `{column, row, unit, size}` |
 
-Check `container_type` trước khi set.
+Check `container_type` before setting.
 
-### Shape divider built-in V4 native
+### Shape divider built-in (V4 native)
 
-Container settings `shape_divider_bottom`, `shape_divider_bottom_color`, `shape_divider_bottom_height`, `shape_divider_bottom_flip`. Shapes: `waves`, `mountains`, `clouds`, `tilt`, `triangle`, `arrow`. Apply per section bottom edge → smooth transition giữa sections khác bg color.
+Container settings `shape_divider_bottom`, `shape_divider_bottom_color`, `shape_divider_bottom_height`, `shape_divider_bottom_flip`. Shapes: `waves`, `mountains`, `clouds`, `tilt`, `triangle`, `arrow`. Apply per section bottom edge → smooth transition between sections of different bg colors.
 
-5 phút setup, big visual impact. Không cần SVG embed thủ công.
+5-minute setup, big visual impact. No need for SVG embed by hand.
 
 ### Counter widget swap pattern
 
-Khi clone page và cần thay counter values, KHÔNG str_replace `ending_number` (số không unique). Walk JSON, match by `widgetType === 'counter'` + original `settings.title`. Helper `update_counter_by_title()` trong [`templates/snippets/elementor-data-update.php`](../templates/snippets/elementor-data-update.php).
+When cloning a page and swapping counter values, do NOT `str_replace` `ending_number` (the number is not unique). Walk the JSON, match by `widgetType === 'counter'` + the original `settings.title`. Helper `update_counter_by_title()` in [`templates/snippets/elementor-data-update.php`](../templates/snippets/elementor-data-update.php).
 
-## Settings cần post-CSS regen mới apply
+## Settings that need post-CSS regen to apply
 
-Set qua MCP/REST → DB lưu đúng, nhưng live render KHÔNG có inline style/CSS rule tương ứng. Page A cùng setting render đúng (vì created via Editor → CSS regen tự động). Page B sau MCP push — không.
+Set via MCP / REST → DB stores it correctly, but the live render has no inline style or CSS rule for it. A page A with the same setting renders correctly (because it was created via the Editor → CSS regen happens automatically). Page B, pushed through MCP later, does not.
 
-**Affected settings** (list cập nhật theo gặp phải):
-- `title_color` trên heading widget
-- `typography_*` các properties (`font_size`, `font_weight`, `letter_spacing`, ...)
-- `_padding`, `_margin` với responsive units
+**Affected settings** (list updated as encountered):
+- `title_color` on heading widgets
+- `typography_*` properties (`font_size`, `font_weight`, `letter_spacing`, ...)
+- `_padding`, `_margin` with responsive units
 - Custom column width (`_inline_size`)
 
-**Workarounds (chọn 1)**:
-1. **Mu-plugin CSS rule** target widget class wrapper (`.cta-heading .elementor-heading-title { color: ...!important; }`) — bypass post-CSS hoàn toàn, work ngay không cần regen. **Reliable cho automation**.
-2. **Force Elementor post-CSS regen** PHP one-shot:
+**Workarounds (pick one)**:
+1. **mu-plugin CSS rule** targeting the widget class wrapper (`.cta-heading .elementor-heading-title { color: ... !important; }`) — bypasses post-CSS entirely, works immediately. **Reliable for automation.**
+2. **Force Elementor post-CSS regen** via PHP one-shot:
    ```php
    \Elementor\Core\Files\CSS\Post::create($post_id)->update();
    ```
-3. Visit page trong Editor & save manual (không scale).
+3. Open the page in the Editor and save manually (does not scale).
 
-## Column width: `_column_size` ≠ width enforcement
+## Column width: `_column_size` is NOT enforced
 
-Set `_column_size: 63` qua MCP/REST → DB lưu đúng. Nhưng rendered DOM column width chỉ ~51% (`flex: 0 1 auto`, `flexBasis: auto`, `width: auto`). Computed width theo content, không 63%.
+Setting `_column_size: 63` via MCP / REST → the DB stores it correctly. But the rendered DOM shows column width ~51% (`flex: 0 1 auto`, `flexBasis: auto`, `width: auto`). Computed width follows content, not 63%.
 
-**Root cause**: Elementor chỉ generate `width: X%` rule khi `_inline_size` được set. `_column_size` chỉ là fallback cho old non-flex column layout.
+**Root cause**: Elementor only generates a `width: X%` rule when `_inline_size` is set. `_column_size` is just a fallback for the old non-flex column layout.
 
-**Fix (chọn 1)**:
-1. Set thêm `_inline_size: 63` (numeric) → Elementor sinh inline `width: 63%` style.
+**Fix (pick one)**:
+1. Also set `_inline_size: 63` (numeric) → Elementor emits inline `width: 63%`.
 2. **Recommended**: CSS flex override:
    ```css
-   .header-nav { flex: 1 1 0 !important; }  /* grow fill remaining */
+   .header-nav { flex: 1 1 0 !important; }              /* grow to fill */
    .header-logo, .header-cta { flex: 0 0 auto !important; }  /* shrink to content */
    ```
-   Robust hơn vì content-driven sizing — logo/CTA co theo text, nav grow fill space.
+   More robust because of content-driven sizing — logo / CTA shrink to text, nav grows to fill space.
 
-Khi build new layout via MCP, **verify width thực tế trong browser** không tin DB value.
+When building a new layout via MCP, **verify the actual width in the browser** — do not trust the DB value.
 
 ## Class propagation across nested sections
 
-Khi style relies on parent class (vd `.dark` cho dark bg sections), apply lên CẢ nested sections vì `:not()` chains kiểm tra closest ancestor section, KHÔNG kiểm tra outer ancestor.
+When styles rely on a parent class (e.g. `.dark` for dark-bg sections), apply the class to ALL nested sections, because `:not()` chains check the closest ancestor section, NOT an outer ancestor.
 
-Elementor CTA structure thường:
+A typical Elementor CTA structure:
 ```
 outer-section.dark
   → column
@@ -337,9 +342,9 @@ outer-section.dark
         → widget
 ```
 
-Heading's `.closest('section')` là inner-section KHÔNG có `.dark` → `:not([class~="dark"])` vẫn match → vẫn ăn rule mặc định.
+The heading's `.closest('section')` is the inner-section without `.dark` → `:not([class~="dark"])` still matches → the rule still applies.
 
-**Fix**: walk tree, propagate `.dark` class xuống mọi section bên trong outer-dark:
+**Fix**: walk the tree and propagate `.dark` to every section inside an outer-dark:
 ```php
 function propagate_class_to_nested_sections(array &$elements, string $cls): void {
     foreach ($elements as &$el) {
@@ -353,25 +358,25 @@ function propagate_class_to_nested_sections(array &$elements, string $cls): void
 }
 ```
 
-## `update_page_from_file` không regen `post_content`
+## `update_page_from_file` does NOT regen `post_content`
 
-Push file JSON đã sửa qua `mcp__elementor__update_page_from_file` → REST `/wp/v2/pages/N?context=edit` thấy `_elementor_data` mới. NHƯNG `.content.rendered` (cột `post_content`) vẫn HTML cũ → frontend render từ `post_content` nên user không thấy thay đổi.
+Pushing an edited JSON file via `mcp__elementor__update_page_from_file` → REST `/wp/v2/pages/N?context=edit` shows the new `_elementor_data`. BUT `.content.rendered` (the `post_content` column) still has the old HTML → frontend renders from `post_content`, so the user does not see the change.
 
-**Root cause**: `update_page_*` MCP chỉ update meta `_elementor_data` qua REST. Không trigger Elementor save handler → không regen HTML → không xoá LiteSpeed page cache.
+**Root cause**: `update_page_*` MCP only updates the `_elementor_data` meta via REST. It does not trigger the Elementor save handler → no HTML regen → no LiteSpeed page-cache invalidation.
 
-**Workflow chuẩn cho image bulk swap / data update**:
-1. Edit JSON local
-2. `mcp__elementor__update_page_from_file` push data
-3. **`mcp_batch_update`** (hoặc `update_widget` / `update_element`) cùng settings vừa push → đi qua Elementor save pipeline → re-render `post_content` + invalidate LiteSpeed cache
+**Standard workflow for image bulk swap / data update**:
+1. Edit JSON locally
+2. `mcp__elementor__update_page_from_file` to push the data
+3. **`mcp_batch_update`** (or `update_widget` / `update_element`) with the same settings just pushed → goes through the Elementor save pipeline → re-renders `post_content` + invalidates LiteSpeed cache
 
-→ 2-step pattern bắt buộc cho mọi bulk update qua MCP.
+→ The 2-step pattern is required for any bulk update via MCP.
 
-## Image widget `update-widget` cần đầy đủ object
+## Image widget `update-widget` needs the full object
 
-Khi update image widget, KHÔNG đủ chỉ set `id`:
+When updating an image widget, setting only `id` is NOT enough:
 
 ```json
-// WRONG — Elementor cache URL trong _elementor_data, không re-resolve từ ID
+// WRONG — Elementor caches the URL inside _elementor_data, does not re-resolve from the ID
 {
   "image": { "id": 3872 }
 }
@@ -381,24 +386,24 @@ Khi update image widget, KHÔNG đủ chỉ set `id`:
   "image": {
     "id": 3872,
     "url": "https://example.com/wp-content/uploads/2026/05/hero.jpg",
-    "alt": "VN alt text cho SEO",
+    "alt": "Descriptive alt text for SEO",
     "source": "library",
     "size": ""
   }
 }
 ```
 
-Sau update, Elementor frontend tự generate thumb tại `wp-content/uploads/elementor/thumbs/[basename]-rn[hash].jpg` (tên xáo trộn để bypass CDN cache cũ).
+After the update, the Elementor frontend auto-generates a thumb at `wp-content/uploads/elementor/thumbs/[basename]-rn[hash].jpg` (the hash bypasses old CDN cache).
 
-## `add-form` không set `custom_id` — manual patch sau build
+## `add-form` does NOT set `custom_id` — manual patch after build
 
-MCP `add-form` build form fields nhưng KHÔNG enforce `custom_id` → silent fail submission. Xem [`pitfalls.md` "CRITICAL: Pro Form silent fail"](pitfalls.md) cho full detection + fix.
+MCP `add-form` builds form fields but does NOT enforce `custom_id` → silent submission failures. See [`pitfalls.md` "CRITICAL: Pro Form silent fail"](pitfalls.md) for full detection + fix.
 
-**Quy tắc**: sau mọi `add-form`, manual patch fields với `custom_id` semantic (`name`, `email`, `phone`, `route`, ...). KHÔNG dùng `field_1`/`field_2` mặc định.
+**Rule**: after every `add-form`, manually patch fields with semantic `custom_id` (`name`, `email`, `phone`, `route`, ...). Do NOT use the default `field_1` / `field_2`.
 
 ## WP MCP Abilities API — input wrapper format
 
-Tất cả MCP servers (mcp-wp, elementor-mcp, custom WAE abilities) chia sẻ Abilities API REST endpoint pattern:
+All MCP servers (mcp-wp, elementor-mcp, custom WAE abilities) share the same Abilities API REST endpoint pattern:
 
 ### Read-only abilities (GET method)
 
@@ -407,14 +412,14 @@ URL syntax: `?input[key]=value` (PHP-style nested array, URL-encoded):
 GET /wp-json/wp-abilities/v1/abilities/elementor-mcp/get-page-structure/run?input%5Bpost_id%5D=206
 ```
 
-Sai cách:
-- ❌ POST với body — server reject "Read-only abilities require GET method"
-- ❌ Query param trực tiếp `?post_id=206` — "input không phải là loại của object"
-- ❌ JSON-encoded query `?input={...}` — không decode đúng
+Wrong:
+- ❌ POST with body — server rejects with "Read-only abilities require GET method"
+- ❌ Direct query param `?post_id=206` — "input is not of type object"
+- ❌ JSON-encoded query `?input={...}` — does not decode correctly
 
 ### Write abilities (POST method)
 
-Body wrapper bắt buộc:
+Body wrapper required:
 ```json
 {
   "input": {
@@ -425,21 +430,21 @@ Body wrapper bắt buộc:
 }
 ```
 
-### Discover abilities loaded
+### Discover loaded abilities
 
 ```
 GET /wp-json/wp-abilities/v1/abilities
 ```
 
-→ List all loaded abilities + their schemas. Khi MCP client tool báo error `-32603: Failed to get ability details: 404`, fallback sang direct REST call qua endpoint trên.
+→ Lists all loaded abilities + their schemas. When the MCP client tool returns `-32603: Failed to get ability details: 404`, fall back to direct REST calls via the endpoint above.
 
 ## WP Admin upload (`async-upload.php`) vs REST `/wp/v2/media`
 
-2 endpoints upload qua **code path khác nhau**:
+The two upload endpoints take **different code paths**:
 
 | Endpoint | Auth | Hooks triggered | Failure modes |
 |---|---|---|---|
 | `/wp-admin/async-upload.php` | nonce + cookies | `wp_handle_upload`, `wp_generate_attachment_metadata` | UI-friendly errors |
-| `/wp/v2/media` (REST) | Basic Auth (App Password) | Same hooks BUT khác wrapper code | 500 fatal silent nếu hook crash |
+| `/wp/v2/media` (REST) | Basic Auth (App Password) | Same hooks BUT through different wrapper code | 500 fatal silent if a hook crashes |
 
-**Workaround khi REST broken**: Drag-drop qua WP Admin → vẫn work. Hữu ích cho bulk upload nếu script REST fail. Cũng dùng MCP `sideload_image` ability → khác code path thứ 3 — fallback nếu 2 path trên fail.
+**Workaround when REST is broken**: drag-drop via WP Admin → still works. Useful for bulk upload if the REST script fails. Also use the MCP `sideload_image` ability → a third code path — fallback if both above fail.

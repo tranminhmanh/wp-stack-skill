@@ -1,6 +1,6 @@
 # Design Tokens — Universal
 
-Brand-specific (màu, font cụ thể) đọc từ CLAUDE.md project. File này chỉ chứa hệ thống số.
+Brand-specific values (exact colors, exact fonts) live in the project `CLAUDE.md`. This file only contains the numeric system.
 
 ## Spacing scale (8-point grid)
 
@@ -15,9 +15,9 @@ xl   = 64px
 4xl  = 160px
 ```
 
-Mọi spacing là bội số 8 (hoặc 4 cho fine-tuning).
+Every spacing value is a multiple of 8 (or 4 for fine-tuning).
 
-## Responsive scale reduce
+## Responsive scale reduction
 
 | Token | Desktop | Tablet | Mobile |
 |---|---|---|---|
@@ -30,28 +30,28 @@ Mọi spacing là bội số 8 (hoặc 4 cho fine-tuning).
 | 3xl | 120 | 96 | 64 |
 | 4xl | 160 | 120 | 80 |
 
-Quy tắc: tablet = 70-80% desktop, mobile = 50-66% desktop.
+Rule: tablet = 70–80% desktop, mobile = 50–66% desktop.
 
 ## Container max-widths
 
-- Standard: 1280px (boxed) — mặc định
+- Standard: 1280px (boxed) — default
 - Narrow text: 720px (blog post body)
 - Full bleed: 100% (hero video, full-width image)
 
 Side padding: 32px desktop / 24px tablet / 16px mobile.
 
-## Section padding-top/bottom
+## Section padding-top / padding-bottom
 
-| Loại | Desktop | Tablet | Mobile |
+| Type | Desktop | Tablet | Mobile |
 |---|---|---|---|
 | Hero | 120 | 80 | 64 |
 | Standard | 96 | 64 | 48 |
 | Compact | 64 | 48 | 32 |
 | Tight | 40 | 32 | 24 |
 
-Section liền kề KHÔNG cộng dồn margin — chỉ dùng padding.
+Adjacent sections do NOT stack margins — only padding.
 
-## Grid gaps (flex_gap)
+## Grid gaps (`flex_gap`)
 
 | Layout | Desktop | Tablet | Mobile |
 |---|---|---|---|
@@ -60,9 +60,9 @@ Section liền kề KHÔNG cộng dồn margin — chỉ dùng padding.
 | 4 cols | 24 | 20 | 16 |
 | 6 cols (logo cloud) | 16 | 16 | 16 |
 
-Quy tắc: càng nhiều cột → gap càng nhỏ.
+Rule: more columns → smaller gap.
 
-## Card / Component padding
+## Card / component padding
 
 | Component | Desktop | Mobile |
 |---|---|---|
@@ -92,15 +92,15 @@ Line-height: heading 1.2, body 1.6.
 - H3 margin-bottom: 16px
 - H4 margin-bottom: 12px
 - Paragraph margin-bottom: 16px
-- H2 mới (sau content) margin-top: 64px
+- New H2 (after content) margin-top: 64px
 
 ## Border radius scale
 
 ```
 none = 0
 sm   = 4px      (input, small button)
-md   = 8px      (button, card thường)
-lg   = 16px     (card lớn, modal)
+md   = 8px      (button, regular card)
+lg   = 16px     (large card, modal)
 xl   = 24px     (hero card, feature card)
 full = 9999px   (pill, avatar)
 ```
@@ -119,26 +119,26 @@ xl  = 0 20px 25px rgba(0,0,0,0.15)
 
 ```
 Mobile:        < 768px
-Tablet:        768 - 1024px
-Desktop:       1024 - 1440px
+Tablet:        768 – 1024px
+Desktop:       1024 – 1440px
 Desktop wide:  > 1440px
 ```
 
-Trùng Elementor default — không override.
+Matches Elementor defaults — do not override.
 
-## Quy tắc bắt buộc
+## Required rules
 
-1. KHÔNG dùng spacing không nằm trong scale
-2. KHÔNG margin sát mép viewport — luôn qua container padding
-3. Section liền kề KHÔNG cộng dồn margin (chỉ dùng padding)
-4. Grid càng nhiều cột → gap càng nhỏ
-5. Mobile spacing = 50-66% desktop spacing
-6. Mọi heading set 3 size cho 3 breakpoint
-7. Mọi padding/margin set 3 giá trị cho 3 breakpoint
+1. Do NOT use spacing values outside the scale
+2. Do NOT margin against the viewport edge — always go through container padding
+3. Adjacent sections do NOT stack margins (use padding only)
+4. More grid columns → smaller gap
+5. Mobile spacing = 50–66% of desktop spacing
+6. Every heading sets 3 sizes for 3 breakpoints
+7. Every padding / margin sets 3 values for 3 breakpoints
 
 ## Global section centering pattern (Elementor kit `custom_css`)
 
-Apply 1 lần trong kit → tất cả sections future tự center mà không cần wrap inner container:
+Apply once in the kit → every future section auto-centers without wrapping in an inner container:
 
 ```css
 .e-con-full > .elementor-widget,
@@ -151,12 +151,12 @@ Apply 1 lần trong kit → tất cả sections future tự center mà không c�
 }
 ```
 
-## Header / Footer location override (full-bleed exception)
+## Header / footer location override (full-bleed exception)
 
-Header/footer location cần ESCAPE global centering rule trên. Override phải reset ĐỦ 3 properties (xem [pitfalls.md "CSS cascade"](pitfalls.md)):
+Header and footer locations need to ESCAPE the global centering rule above. The override must reset all 3 properties (see [pitfalls "CSS cascade"](pitfalls.md)):
 
 ```css
-/* Header — flex layout, không boxed */
+/* Header — flex layout, not boxed */
 .elementor-location-header .e-con-full > .elementor-widget,
 .elementor-location-header .e-con-full > .e-con {
   max-width: none;
@@ -164,7 +164,7 @@ Header/footer location cần ESCAPE global centering rule trên. Override phải
   margin-inline: 0;
 }
 
-/* Footer — outer column full-bleed cho dark bg, inner grid đã boxed sẵn */
+/* Footer — outer column full-bleed for dark bg, inner grid already boxed */
 .elementor-location-footer > .e-con-full {
   max-width: none;
   width: 100%;
@@ -172,23 +172,23 @@ Header/footer location cần ESCAPE global centering rule trên. Override phải
 }
 ```
 
-`!important` thường cần khi đối đầu Elementor's `--container-max-width` CSS variable.
+`!important` is usually needed when fighting Elementor's `--container-max-width` CSS variable.
 
 ## B2B header sizing tokens
 
-Pattern professional (Stripe / Linear / Vercel / Notion / Figma):
+Professional pattern (Stripe / Linear / Vercel / Notion / Figma):
 
 | Property | Value |
 |---|---|
 | Header height | 64–72px (sticky shrunk) / 88–96px (top hero) |
 | Logo height | 32–40px |
 | Padding Y | 16px |
-| Padding X | 32 desktop / 24 tablet / 16 mobile (theo design-tokens) |
-| Background | white / light navy tint |
-| Border-bottom | `1px solid rgba(navy, 0.08)` (subtle, chuyên nghiệp hơn shadow) |
-| Topbar (optional) | hotline + email + Zalo, 32–36px, `font-size: 13–14px`, hide mobile |
+| Padding X | 32 desktop / 24 tablet / 16 mobile (per design-tokens) |
+| Background | white / light tint |
+| Border-bottom | `1px solid rgba(navy, 0.08)` (subtle, more professional than shadow) |
+| Topbar (optional) | hotline + email + chat link, 32–36px, font-size 13–14px, hide on mobile |
 
-**Logo SVG aspect ratio formula**: `target_height × aspect_ratio = width`. SVG 360×80 (= 4.5:1) + height 40px → set `width: 180px`. Image widget `height: auto` theo aspect.
+**Logo SVG aspect-ratio formula**: `target_height × aspect_ratio = width`. SVG 360×80 (4.5:1) at height 40px → set `width: 180px`. Image widget `height: auto` follows aspect.
 
 ## Card design tokens (B2B)
 
@@ -196,14 +196,14 @@ Pattern professional (Stripe / Linear / Vercel / Notion / Figma):
 white bg
 border-radius: 12px
 padding: 28-32px (24px mobile)
-box-shadow: 0 1px 3px rgba(navy,0.08)
-border: 1px solid rgba(navy,0.06)
+box-shadow: 0 1px 3px rgba(navy, 0.08)
+border: 1px solid rgba(navy, 0.06)
 
 hover:
   transform: translateY(-4px)
-  box-shadow: 0 16px 40px rgba(navy,0.12)
-  border-color: rgba(teal,0.3)
+  box-shadow: 0 16px 40px rgba(navy, 0.12)
+  border-color: rgba(teal, 0.3)
   transition: 0.2s ease
 ```
 
-Apply consistent cho tất cả card variants (service, testimonial, feature, route).
+Apply consistently across all card variants (service, testimonial, feature, route).

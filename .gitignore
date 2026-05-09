@@ -1,8 +1,33 @@
+# OS
 .DS_Store
-*.swp
-*.bak
+Thumbs.db
+
+# Editor
 .idea/
 .vscode/
-node_modules/
-.env
+*.swp
+*.swo
+*~
+
+# Local-only project notes (not part of the skill)
+/private/
+/scratch/
+*.local.md
+
+# Temporary
+*.tmp
+*.bak
 *.log
+
+# Secrets — never commit
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+credentials.json
+
+# Built artifacts
+dist/
+build/
+node_modules/

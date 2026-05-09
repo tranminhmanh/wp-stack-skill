@@ -1,0 +1,83 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  markdown:
+    name: Markdown lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: DavidAnson/markdownlint-cli2-action@v18
+        with:
+          globs: '**/*.md'
+          config: '.markdownlint.json'
+        continue-on-error: true  # Lint warnings don't fail the build (yet)
+
+  links:
+    name: Markdown link check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run lychee
+        uses: lycheeverse/lychee-action@v2
+        with:
+          args: >-
+            --no-progress
+            --exclude '^https?://example\.com'
+            --exclude '^https?://localhost'
+            --exclude '^https?://site\.com'
+            --exclude '^https?://<.*>'
+            --max-redirects 5
+            --max-retries 2
+            './**/*.md'
+          fail: true
+
+  php:
+    name: PHP syntax check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          coverage: none
+      - name: Lint PHP files
+        run: |
+          set -e
+          for f in $(find templates/snippets -name '*.php'); do
+            echo "Linting $f"
+            php -l "$f"
+          done
+
+  shell:
+    name: Shell lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run shellcheck on inline shell blocks
+        run: |
+          # Light pass — extract fenced bash blocks and lint each.
+          # Best-effort, does not fail on style warnings.
+          set +e
+          mkdir -p /tmp/shell-blocks
+          i=0
+          for md in $(find . -name '*.md' -not -path './.git/*'); do
+            awk '
+              /^```bash$/ { flag=1; next }
+              /^```$/     { flag=0 }
+              flag        { print }
+            ' "$md" > "/tmp/shell-blocks/block-$i.sh"
+            i=$((i+1))
+          done
+          which shellcheck || sudo apt-get install -y shellcheck
+          for f in /tmp/shell-blocks/*.sh; do
+            [ -s "$f" ] || continue
+            shellcheck -S warning "$f" || true
+          done
+        continue-on-error: true

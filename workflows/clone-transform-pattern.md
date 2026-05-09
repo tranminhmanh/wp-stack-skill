@@ -1,36 +1,36 @@
 # Workflow: Clone + Transform — Bulk-build Elementor pages
 
-Khi cần build N trang có structure ~95% giống nhau (vd: pillar landing 8 country, subpage 50+ cặp cảng, child page legal 3 ngôn ngữ), pattern manual MCP tốn ~45–60 phút/trang. Pattern này clone `_elementor_data` từ template + walk-replace targeted → ~2–10 phút/trang.
+When you need to build N pages with ~95% identical structure (e.g. 8 country pillar pages, 50+ port-pair subpages, 3-language legal child pages), the manual MCP pattern takes ~45–60 min per page. This pattern clones `_elementor_data` from a template + walk-replace targeted strings → ~2–10 min per page.
 
-## Khi nào áp dụng
+## When to apply
 
-✅ Áp dụng khi:
-- Đã có 1 trang template build hoàn chỉnh qua MCP (golden master)
-- N trang mới có structure giống nhau (≥90%), chỉ khác text/numbers/links
-- Per-trang differs: heading text, counter values, table rows, accordion FAQs, schema JSON-LD
+✅ Apply when:
+- You already have one fully-built template page from MCP (golden master)
+- N new pages share ≥90% of the structure, only text / numbers / links differ
+- Per-page differences: heading text, counter values, table rows, accordion FAQs, schema JSON-LD
 
-❌ KHÔNG áp dụng khi:
-- Layout khác hẳn (re-build từ đầu)
-- < 3 trang (manual MCP nhanh hơn)
+❌ Do NOT apply when:
+- Layout differs significantly (rebuild from scratch)
+- < 3 pages (manual MCP is faster)
 
-## Quy trình
+## Procedure
 
-### 1. Build golden master qua MCP (~45–60 phút lần đầu)
+### 1. Build the golden master via MCP (~45–60 min the first time)
 
-Build trang đầu tiên hoàn chỉnh. LƯU element IDs (7-char hex) của các block sẽ thay đổi:
+Build the first page completely. SAVE element IDs (7-char hex) for the blocks that will change:
 - Hero H1, subtitle, CTA
 - Counter widgets (4–6)
 - Industry icon-boxes
-- Pain case headings + HTML widgets
+- Pain-case headings + HTML widgets
 - Tip / FAQ accordion tabs
 - Transit / pricing table HTML
 - Schema JSON-LD HTML widget
 
-Đọc post structure: `mcp__elementor__get_page(page_id)` hoặc `wp post meta get $id _elementor_data`.
+Read post structure: `mcp__elementor__get_page(page_id)` or `wp post meta get $id _elementor_data`.
 
-### 2. Viết transform PHP script
+### 2. Write the transform PHP script
 
-Dùng helpers từ [`../templates/snippets/elementor-data-update.php`](../templates/snippets/elementor-data-update.php). Skeleton:
+Use helpers from [`../templates/snippets/elementor-data-update.php`](../templates/snippets/elementor-data-update.php). Skeleton:
 
 ```php
 <?php
@@ -42,31 +42,31 @@ $source_data = json_decode(get_post_meta($source_id, '_elementor_data', true), t
 
 // 1. Generic text replacements (50–80 pairs)
 walk_recursive_replace($source_data, [
-    'Hàn Quốc' => 'Nhật Bản',
-    'Busan'    => 'Tokyo',
-    'KMTC'     => 'ONE Express',
-    'tuyen-van-chuyen-vn-han-quoc' => 'tuyen-van-chuyen-vn-nhat-ban',
+    'Country A' => 'Country B',
+    'Port A'    => 'Port B',
+    'Carrier-A' => 'Carrier-B',
+    'route-country-a' => 'route-country-b',
     // ... ~50 pairs
 ]);
 
 // 2. Targeted updates by element ID
 update_element_by_id($source_data, 'df5f3f6', function (&$el) {
-    $el['settings']['title'] = 'Vận chuyển container Việt Nam đi Nhật Bản';
+    $el['settings']['title'] = 'Container shipping to Country B';
 });
 
-// 3. Counter swap by current title (ending_number không unique)
-update_counter_by_title($source_data, 'Kim ngạch XK', [
+// 3. Counter swap by current title (ending_number is not unique)
+update_counter_by_title($source_data, 'Annual exports', [
     'ending_number' => 25,
-    'title' => 'Kim ngạch XK (tỷ USD)',
+    'title' => 'Annual exports (USD billion)',
 ]);
 
-// 4. Hash anchor absolutize (nếu copy header/footer section)
+// 4. Hash anchor absolutize (when copying header/footer sections)
 absolutize_hash_links($source_data);
 
-// 5. Create new page với required meta
+// 5. Create the new page with required meta
 $new_id = create_elementor_page([
-    'title'  => 'Vận chuyển container Việt Nam đi Nhật Bản',
-    'slug'   => 'tuyen-van-chuyen-vn-nhat-ban',
+    'title'  => 'Container shipping to Country B',
+    'slug'   => 'route-country-b',
     'parent' => get_post($source_id)->post_parent,
     'data'   => $source_data,
 ]);
@@ -74,61 +74,134 @@ $new_id = create_elementor_page([
 echo "Created $new_id\n";
 ```
 
-### 3. Run + verify ngay sau mỗi page
+### 3. Run + verify immediately after each page
 
 ```bash
 docker exec <container> php /tmp/transform_pillar.php
 # Output: Created post 459
 
 # Verify HTTP 200 + no fatal
-URL="https://example.com/tuyen-van-chuyen-vn-nhat-ban?cb=$(date +%s)"
+URL="https://example.com/route-country-b?cb=$(date +%s)"
 curl -sI "$URL" | head -1
-curl -s "$URL" | grep -c '<title>WordPress.*Lỗi\|wp-die-message'
-# Phải trả 0 — nếu > 0 → rollback ngay
+curl -s "$URL" | grep -c '<title>WordPress.*Error\|wp-die-message'
+# Must be 0 — if > 0 → roll back immediately
 ```
 
-KHÔNG batch nhiều transform rồi mới verify. Verify ngay sau mỗi page để rollback gọn.
+Do NOT batch many transforms then verify at the end. Verify after each page so rollback is clean.
 
-### 4. Manual touch-ups (~5 phút)
+### 4. Manual touch-ups (~5 min)
 
-Visit page trên browser, screenshot:
+Visit the page in a browser, screenshot:
 - Check Hero H1 + counter values
-- Check pain case content
-- Check schema JSON-LD trong DevTools
-- Override gì còn sót
+- Check pain-case content
+- Check schema JSON-LD in DevTools
+- Override anything still incorrect
 
-## Time saving (case study)
+## Time savings (case study)
 
 | Iteration | Source → Target | Time |
 |---|---|---|
-| Pillar #1 (golden master) | Manual MCP | ~60 phút |
-| Pillar #2 | Pillar #1 → Pillar #2 (pattern emerging) | ~45 phút |
-| Pillar #3 | Pillar #2 → Pillar #3 (stable) | ~32 phút |
-| Pillar #4+ | mature | ~25–30 phút |
-| 5 subpages cùng pillar | template subpage → 5 routes | ~75 phút (vs ~5h manual) |
+| Page #1 (golden master) | Manual MCP | ~60 min |
+| Page #2 | Page #1 → Page #2 (pattern emerging) | ~45 min |
+| Page #3 | Page #2 → Page #3 (stable) | ~32 min |
+| Page #4+ | mature | ~25–30 min |
+| 5 subpages of one pillar | template subpage → 5 routes | ~75 min (vs ~5h manual) |
 
-Time saved: ~73–95% sau khi pattern stable.
+Time saved: ~73–95% once the pattern is stable.
 
-## Pattern matures only after 2-3 iterations
+## Common pitfalls
 
-Build #1 (golden master) thường có 3-5 micro-bugs detect khi iterate sang Build #2-3:
+### 1. Plain str_replace doesn't match non-ASCII text
+`_elementor_data` stores non-ASCII (Vietnamese, Chinese, etc.) as `\uXXXX` JSON escapes. PHP `str_replace('Hải Phòng', ...)` literal does NOT match.
+
+**Fix**: decode JSON → walk recursive and replace plain strings → re-encode (`wp_json_encode` auto re-escapes Unicode → matches the stored format).
+
+### 2. `update_post_meta` strips backslash escapes
+WP calls `wp_unslash()` internally → corrupts the JSON when re-stored.
+
+**Fix**: call `wp_slash($encoded)` before passing to `update_post_meta()`. Helper `update_elementor_data()` wraps this.
+
+### 3. Counter swap not unique by `ending_number`
+Multiple counters may have the same `ending_number: 5` → str_replace cannot distinguish.
+
+**Fix**: walk the JSON, match by `widgetType === 'counter'` + the original `settings.title`. Helper `update_counter_by_title()`.
+
+### 4. Hash anchor links broken when copying a section across pages
+A header / footer section using `#san-pham` only scrolls correctly on the homepage. On a child page that does not have that section → no scroll.
+
+**Fix**: regex transform `href="#xxx"` → `href="/#xxx"` (root-relative). Helper `absolutize_hash_links()` covers 4 places (button link.url, icon-list items, text-editor / HTML inline href).
+
+### 5. Empty `_elementor_edit_mode` → page renders broken
+If you skip the meta `_elementor_edit_mode = 'builder'`, WP fallback rendering kicks in with wpautop + wp_kses_post → strips HTML widget classes, divs, spans. The page renders as plain text instead of the Elementor layout.
+
+See [`pitfalls.md`](../references/pitfalls.md) "CRITICAL: edit_mode empty → wpautop". Helper `create_elementor_page()` always sets it correctly.
+
+### 6. Schema JSON-LD price update — escape regex
+HTML widget content is stored escaped inside `_elementor_data`. Match `"lowPrice":\s*"\d+"` → swap. Plain `str_replace` does not work because the format has whitespace variations.
+
+### 7. Bash heredoc + SSH escape hell
+The outer `"..."` of `ssh` interferes with the inner `<<'PHPEOF'` heredoc backslash escaping. Triple-escaped backslashes `\\\\\\` become unpredictable.
+
+**Fix**: `Write` the PHP file locally → `scp` to remote → `docker cp` into the container → `docker exec php /tmp/...`. Avoid all shell-escape layering.
+
+### 8. Walk-replace HTML widget trap (multiple items in one widget)
+
+When N items are encoded inside **a single HTML widget** (grid layout, list inline) — e.g. 5 cards inline in `<div class="grid">5 cards</div>` — naive `stripos` first-match replacement REPLACES the ENTIRE widget content → loses N-1 items.
+
+**Detection**: compare `strlen($elementor_data)` before/after — a sudden drop (e.g. 17KB→13KB for 5→1 cards) is the smoking gun.
+
+**Fix**: detect the target widget by a marker class + REBUILD the whole widget with N items:
+```php
+function walk_replace_grid(&$elements, &$found, $new_full_grid_html) {
+    foreach ($elements as &$el) {
+        if (($el['widgetType'] ?? '') === 'html'
+            && strpos($el['settings']['html'] ?? '', 'x-blog-coming-grid') !== false) {
+            $el['settings']['html'] = $new_full_grid_html;
+            $found++;
+            return;
+        }
+    }
+}
+```
+
+See [`pitfalls.md` "Walk-replace HTML widget trap"](../references/pitfalls.md) for the full lesson.
+
+## Verify-iterate-fix cycle
+
+After each transform-script run:
+1. `curl -sI` page URL → expect 200
+2. `curl -s | grep` fatal patterns → expect 0
+3. Screenshot via Chrome MCP / browser
+4. If wrong → adjust the script → re-run
+5. Average 3–4 iterations for complex layouts
+
+When building / editing via MCP and immediately screenshotting → old CSS still cached. Force-fresh pattern:
+```
+URL?fresh=$(date +%s%N)  + Cmd+Shift+R
+rm -rf wp-content/cache/* uploads/elementor/css/*
+docker exec <c> php -r 'opcache_reset();'
+```
+
+## Pattern matures only after 2–3 iterations
+
+Build #1 (golden master) usually has 3–5 micro-bugs that surface when iterating to Build #2-3:
 - Missing `_wp_page_template = 'elementor_canvas'` → Astra entry-title H1 duplicate
-- HTML escaping inconsistency cho Vietnamese chars
-- Schema JSON-LD chưa có FAQPage trong v1
+- HTML escaping inconsistency for non-ASCII chars
+- Schema JSON-LD missing FAQPage in v1
 - Counter ending_number wrong format (float vs int)
-- Hash anchor links không absolutize
+- Hash anchor links not absolutized
 
-Plan **time cho audit + sync ngược** vào pattern. Tracking:
-- Build #1: ~60 phút manual + audit + fix bugs
-- Build #2: inherit clean pattern + 3-5 mới phát hiện
-- Build #3: pattern stable (~80% bugs fixed)
-- Build #4+: marginal cost ~25 phút/page
+Plan **time for audit + sync back** to the pattern. Tracking:
+- Build #1: ~60 min manual + audit + fix bugs
+- Build #2: inherits the cleaned pattern + 3–5 new findings
+- Build #3: pattern stable (~80% of bugs fixed)
+- Build #4+: marginal cost ~25 min/page
 
-Sau audit, **update helpers trong `templates/snippets/elementor-data-update.php`** với fixes — pattern chỉ matures khi feedback loop closed.
+After the audit, **update helpers in `templates/snippets/elementor-data-update.php`** with fixes — the pattern only matures when the feedback loop closes.
 
-## Alternative: build-from-scratch with generic helpers
+## Alternative: build from scratch with generic helpers
 
-Khi content structure khác hẳn template (vd: blog long-form vs pillar landing page), clone+transform không hiệu quả. Build từ scratch với section helper functions hiệu quả hơn:
+When the content structure differs significantly from the template (e.g. blog long-form vs pillar landing), clone+transform is inefficient. Building from scratch with section-helper functions is more efficient:
 
 ```php
 function gen_id(): string { return substr(bin2hex(random_bytes(4)), 0, 7); }
@@ -152,7 +225,7 @@ function build_blog_data(array $cfg): array {
     ];
 }
 
-// Loop N configs → N pages built trong vài giây
+// Loop N configs → N pages built in seconds
 foreach ($configs as $cfg) {
     $data = build_blog_data($cfg);
     create_elementor_page([
@@ -163,87 +236,30 @@ foreach ($configs as $cfg) {
 }
 ```
 
-**Performance**: Build 5 blogs trong ~3 giây vs ~7.5 giờ manual MCP — saving 99%.
+**Performance**: build 5 blog posts in ~3 seconds vs ~7.5h manual MCP — 99% saved.
 
-**Khi nào prefer over clone+transform**:
-- Content structure khác hẳn (blog vs pillar)
-- Section count/order varies per page
-- Có thể decompose thành reusable section helpers (≥80% page = helpers, <20% per-page custom)
-
-## Bẫy thường gặp
-
-### 1. Vietnamese không match khi str_replace plain string
-`_elementor_data` lưu Vietnamese như `\uXXXX` JSON escapes. PHP `str_replace('Hải Phòng', ...)` literal KHÔNG match.
-
-**Fix**: decode JSON → walk recursive replace plain strings → re-encode (`wp_json_encode` auto re-escape Unicode → matches stored format).
-
-### 2. `update_post_meta` strip backslash escapes
-WP gọi `wp_unslash()` internally → corrupt JSON khi re-store.
-
-**Fix**: gọi `wp_slash($encoded)` trước khi pass vào `update_post_meta()`. Helper `update_elementor_data()` đã wrap.
-
-### 3. Counter swap không unique by `ending_number`
-Nhiều counter có cùng `ending_number: 5` → str_replace không phân biệt.
-
-**Fix**: walk JSON, match by `widgetType === 'counter'` + original `settings.title` text. Helper `update_counter_by_title()`.
-
-### 4. Hash anchor links broken khi copy section sang page khác
-Section header/footer dùng `#san-pham` chỉ scroll OK ở homepage. Page con không có section đó → no scroll.
-
-**Fix**: regex transform `href="#xxx"` → `href="/#xxx"` (root-relative). Helper `absolutize_hash_links()` apply 4 vị trí (button link.url, icon-list items, text-editor/HTML inline href).
-
-### 5. Empty `_elementor_edit_mode` → page render broken
-Nếu skip meta `_elementor_edit_mode = 'builder'`, WP fallback render với wpautop + wp_kses_post → strip HTML widget classes, divs, spans. Page render plain text thay vì layout Elementor.
-
-Xem [`pitfalls.md`](../references/pitfalls.md) "CRITICAL: edit_mode empty → wpautop". Helper `create_elementor_page()` luôn set đầy đủ.
-
-### 6. Schema JSON-LD price update — escape regex
-HTML widget content stored escaped trong `_elementor_data`. Match `"lowPrice":\s*"\d+"` → swap. KHÔNG plain str_replace vì format có space variations.
-
-### 7. Bash heredoc + SSH escape hell
-Outer `"..."` của ssh interferes với inner `<<'PHPEOF'` heredoc backslash escaping. Triple-escaped backslashes `\\\\\\` become unpredictable.
-
-**Fix**: `Write` PHP file local → `scp` to remote → `docker cp` into container → `docker exec php /tmp/...`. Avoid all shell escape layering.
-
-### 8. Walk-replace HTML widget trap (multi items in 1 widget)
-
-Khi N items được encode trong **1 HTML widget duy nhất** (grid layout, list inline) — vd 5 cards inline trong 1 `<div class="grid">5 cards</div>` — naive `stripos` first-match replace ENTIRE widget content → mất N-1 items.
-
-**Detection technique**: So sánh `strlen($elementor_data)` before/after — drop đột ngột (vd 17KB→13KB cho 5→1 cards) = bug này.
-
-**Fix**: Detect target widget bằng marker class + REBUILD whole widget với N items:
-```php
-function walk_replace_grid(&$elements, &$found, $new_full_grid_html) {
-    foreach ($elements as &$el) {
-        if (($el['widgetType'] ?? '') === 'html'
-            && strpos($el['settings']['html'] ?? '', 'sa-blog-coming-grid') !== false) {
-            $el['settings']['html'] = $new_full_grid_html;
-            $found++;
-            return;
-        }
-    }
-}
-```
-
-Xem [`pitfalls.md` "Walk-replace HTML widget trap"](../references/pitfalls.md) cho lessons đầy đủ.
+**When to prefer over clone+transform**:
+- Content structure differs significantly (blog vs pillar)
+- Section count / order varies per page
+- The work decomposes into reusable section helpers (≥80% page = helpers, <20% per-page custom)
 
 ## Cross-page internal linking — Add NEW DOM > regex existing DOM
 
-Khi cần inject internal links từ pillar → N subpages (vd 26 cặp cảng), 2 approach:
+When you need to inject internal links from a pillar → N subpages (e.g. 26 port pairs), there are 2 approaches:
 
-### Approach 1 (fragile): Regex match existing content
+### Approach 1 (fragile): regex match existing content
 
-Walk pillar's transit table HTML, regex match `<strong>HCM → Busan</strong>` → wrap với `<a>` tag. Coverage không đủ vì format inconsistent giữa các pillars (build qua khác script):
-- `HCM → Tokyo` (matched ✓)
+Walk the pillar's transit-table HTML, regex-match `<strong>HCM → Busan</strong>` → wrap with an `<a>` tag. Coverage is low because the format is inconsistent across pillars (built by different scripts):
+- `HCM → Tokyo` (matches ✓)
 - `HCM → Osaka/Kobe` (slash → fail)
-- `HCM → Tanjung Priok` nhưng subpage là `hcm-jakarta` (port name vs city name mismatch)
+- `HCM → Tanjung Priok` but the subpage is `hcm-jakarta` (port name vs city name mismatch)
 - `HCM (Cát Lái) → Nhava Sheva (direct)` (extra suffix → fail)
 
-Result: **~42% coverage** trên 5/8 pillars. Không acceptable cho SEO internal linking.
+Result: **~42% coverage** across 5/8 pillars. Not acceptable for SEO internal linking.
 
-### Approach 2 (winner): Inject explicit cards section
+### Approach 2 (winner): inject an explicit cards section
 
-Build 1 NEW container section per pillar, card grid links đến TẤT CẢ subpages by `post_parent`:
+Build one NEW container section per pillar, with a card grid linking to ALL subpages by `post_parent`:
 
 ```php
 $subs = get_posts([
@@ -256,7 +272,7 @@ $cards = '';
 foreach ($subs as $s) {
     $url = get_permalink($s->ID);
     $label = port_pair_label($s->post_name);  // 'hcm-busan' → 'HCM → Busan'
-    $cards .= "<a href='{$url}' class='sa-subpage-card'>...</a>";
+    $cards .= "<a href='{$url}' class='x-subpage-card'>...</a>";
 }
 
 $new_section = [
@@ -274,52 +290,36 @@ $new_section = [
     ]],
 ];
 
-// Insert before CTA cuối (last section)
+// Insert before the final CTA
 array_splice($data, count($data) - 1, 0, [$new_section]);
 ```
 
-Result: **100% coverage** trên 8/8 pillars + Card UX cleaner than inline links + visible từ any scroll depth.
+Result: **100% coverage** across 8/8 pillars + cleaner card UX than inline links + visible at any scroll depth.
 
-### Marker class pattern (idempotent re-run)
+### Marker class pattern (idempotent re-runs)
 
-Re-run script không double-inject:
+Re-running the script does not double-inject:
 ```php
 $exists = false;
 array_walk_recursive($data, function ($v) use (&$exists) {
-    if (is_string($v) && stripos($v, 'sa-pillar-subpages') !== false) $exists = true;
+    if (is_string($v) && stripos($v, 'x-pillar-subpages') !== false) $exists = true;
 });
-if ($exists) return;  // skip — đã có
+if ($exists) return;  // skip — already there
 ```
 
 ### Universal lesson: Add NEW DOM > regex existing DOM
 
-Khi cần inject internal links / elements / schema vào content đã có:
-- **Regex existing**: phụ thuộc format text → fragile, low coverage, nightmare nếu format vary
-- **Add new dedicated section** với marker class: 100% coverage, explicit positioning, easy to update/remove via marker, idempotent re-run
+When you need to inject internal links / elements / schema into existing content:
+- **Regex existing**: depends on text format → fragile, low coverage, nightmare if format varies
+- **Add a new dedicated section** with a marker class: 100% coverage, explicit positioning, easy to update / remove via the marker, idempotent re-runs
 
-Reusable pattern cho mọi cross-page linking work (related posts, breadcrumbs, child page directories, schema injection).
+Reusable pattern for any cross-page linking work (related posts, breadcrumbs, child page directories, schema injection).
 
 ### Bonus SEO impact
 
-Mỗi pillar inject N inbound `<a href>` đến subpages → strengthen taxonomy crawler signal + cards visible trên-fold của pillar bottom → user CTR tăng. Expected +5–10% organic CTR cho subpages trong 4–6 tuần (Google rebuild internal link graph).
+Each pillar gets N inbound `<a href>` to subpages → strengthens taxonomy signals + cards visible above-fold at the pillar bottom → user CTR climbs. Expected +5–10% organic CTR for subpages within 4–6 weeks (Google rebuilds the internal link graph).
 
-## Verify-iterate-fix cycle
-
-Sau mỗi transform script run:
-1. `curl -sI` page URL → expect 200
-2. `curl -s | grep` fatal patterns → expect 0
-3. Screenshot via Chrome MCP / browser
-4. Nếu sai → adjust script → re-run
-5. Average 3–4 iterations cho complex layout
-
-Khi build/edit qua MCP rồi screenshot ngay → CSS cũ vẫn cached. Pattern force fresh:
-```
-URL?fresh=$(date +%s%N)  + Cmd+Shift+R
-rm -rf wp-content/cache/* uploads/elementor/css/*
-docker exec <c> php -r 'opcache_reset();'
-```
-
-## Liên quan
+## Related
 
 - [`templates/snippets/elementor-data-update.php`](../templates/snippets/elementor-data-update.php) — PHP recipe foundation
 - [`references/elementor-mcp.md`](../references/elementor-mcp.md) — file format + verify pattern

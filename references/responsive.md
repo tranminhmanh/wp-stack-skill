@@ -4,21 +4,21 @@
 
 ```
 Mobile:        < 768px
-Tablet:        768 - 1024px
-Desktop:       1024 - 1440px
+Tablet:        768 – 1024px
+Desktop:       1024 – 1440px
 Wide:          > 1440px
 ```
 
-## Quy tắc layout responsive
+## Responsive layout rules
 
 ### Container direction
 
-- Desktop: `flex_direction: row` cho grid 2-4 cols
-- Mobile: `flex_direction_mobile: column` (auto stack)
+- Desktop: `flex_direction: row` for a 2–4 column grid
+- Mobile: `flex_direction_mobile: column` (auto-stacks)
 
-Hoặc set `flex_wrap: wrap` + width children → tự xuống dòng.
+Or use `flex_wrap: wrap` + child widths → wraps to a new line automatically.
 
-### Width children trong flex row
+### Child widths inside a flex row
 
 | Cols desktop | Width child desktop | Width child tablet | Width child mobile |
 |---|---|---|---|
@@ -26,32 +26,32 @@ Hoặc set `flex_wrap: wrap` + width children → tự xuống dòng.
 | 3 cols | 33.33% | 50% | 100% |
 | 4 cols | 25% | 50% | 100% |
 
-Set qua `width: {size: 33.33, unit: "%"}` + breakpoint variants.
+Set via `width: {size: 33.33, unit: "%"}` + breakpoint variants.
 
-### Spacing reduce theo breakpoint
+### Spacing reduction across breakpoints
 
-Mọi padding/margin/gap phải có 3 giá trị: desktop / tablet / mobile.
-Quy tắc: tablet = 70-80% desktop, mobile = 50-66% desktop.
+Every padding / margin / gap needs three values: desktop / tablet / mobile.
+Rule: tablet = 70–80% of desktop, mobile = 50–66% of desktop.
 
-### Typography responsive
+### Responsive typography
 
-Heading luôn set 3 size:
-- H1: 56/40/32
-- H2: 40/32/28
-- H3: 28/24/22
-- Body: 18/16/16
+Headings always set 3 sizes:
+- H1: 56 / 40 / 32
+- H2: 40 / 32 / 28
+- H3: 28 / 24 / 22
+- Body: 18 / 16 / 16
 
-### Image responsive
+### Responsive images
 
-- `width: 100%` desktop nếu nằm trong column
-- `max-width: 100%` mobile
-- Set `image_size: "large"` để Elementor auto serve responsive srcset
+- `width: 100%` on desktop if inside a column
+- `max-width: 100%` on mobile
+- Set `image_size: "large"` so Elementor auto-serves a responsive `srcset`
 - Hero image: lazy load OFF (LCP element)
-- Below-fold image: lazy load ON
+- Below-fold images: lazy load ON
 
 ### Hide on breakpoint
 
-Chỉ hide khi cực cần thiết (vd: decorative element trên mobile):
+Only hide when truly necessary (e.g. decorative element on mobile):
 ```
 settings: {
   hide_desktop: false,
@@ -60,41 +60,41 @@ settings: {
 }
 ```
 
-## Test responsive sau build
+## Test responsive after building
 
-Bắt buộc check 3 breakpoint:
-- 375px (iPhone SE/13 mini)
+Always check 3 breakpoints:
+- 375px (iPhone SE / 13 mini)
 - 768px (iPad portrait)
 - 1280px (laptop)
 
-## Common bugs và fix
+## Common bugs and fixes
 
 | Bug | Fix |
 |---|---|
-| Text overflow | Giảm font-size mobile |
-| Image squish | Set min-height hoặc aspect-ratio |
-| Button text wrap | Giảm padding hoặc text ngắn lại |
-| Gap quá lớn mobile | Giảm flex_gap_mobile |
-| Hero text dán đỉnh | Tăng padding-top mobile |
-| Sticky header che content | margin-top section đầu = header height |
-| Card height không đều | Set align-items: stretch trên parent |
-| Image distort aspect | object-fit: cover + aspect-ratio |
+| Text overflow | Reduce font-size on mobile |
+| Image squish | Set `min-height` or `aspect-ratio` |
+| Button text wrap | Reduce padding or shorten the text |
+| Gap too large on mobile | Reduce `flex_gap_mobile` |
+| Hero text glued to top | Increase padding-top on mobile |
+| Sticky header overlaps content | margin-top of first section = header height |
+| Card heights uneven | Set `align-items: stretch` on the parent |
+| Image aspect distorted | `object-fit: cover` + `aspect-ratio` |
 
-## Image responsive width — 3 fields riêng
+## Image responsive width — three separate fields
 
-Image widget responsive sizing dùng 3 fields độc lập (KHÔNG 1 field với responsive object):
+Image widget responsive sizing uses three independent fields (NOT one field with a responsive object):
 
 ```
 width:        {size: 100, unit: "%"}     // desktop
-width_tablet: {size: 80, unit: "%"}      // tablet
+width_tablet: {size: 80,  unit: "%"}     // tablet
 width_mobile: {size: 100, unit: "%"}     // mobile
 ```
 
-Tương tự cho `height`, `max_width`. Schema khác với typography (1 field `typography_font_size` + responsive variants).
+Same for `height`, `max_width`. Schema differs from typography (one field `typography_font_size` + responsive variants).
 
-## Custom CSS scope theo media query (KHÔNG override Elementor responsive default)
+## Custom CSS scoped to media queries (do NOT override Elementor responsive defaults)
 
-Khi style một element có default Elementor hide/show theo breakpoint (vd: hamburger toggle, dropdown menu), LUÔN scope custom CSS theo media query để không phá responsive default:
+When styling an element that has Elementor default hide/show behavior at breakpoints (e.g. hamburger toggle, dropdown menu), ALWAYS scope the custom CSS to a media query so you do not break the responsive default:
 
 ```css
 @media (max-width: 1024px) {
@@ -108,13 +108,13 @@ Khi style một element có default Elementor hide/show theo breakpoint (vd: ham
 }
 ```
 
-Bug pattern: custom rule unscoped → mobile toggle hiển thị cả desktop, hoặc desktop nav hiển thị cả mobile.
+Bug pattern: an unscoped custom rule → mobile toggle showing on desktop, or desktop nav showing on mobile.
 
 ## Mobile drawer state-scoped via `[aria-hidden]` attribute
 
-Elementor V4 hide dropdown qua `max-height: 0; opacity: 0` (KHÔNG `display: none`). Custom rule `max-height: calc(100vh - 60px)` override → drawer render visible với 41px height ngay khi `aria-hidden=true`.
+Elementor V4 hides dropdowns via `max-height: 0; opacity: 0` (NOT `display: none`). A custom rule like `max-height: calc(100vh - 60px)` overrides this → the drawer renders visible at 41px height even when `aria-hidden="true"`.
 
-**Fix**: scope drawer styles theo `[aria-hidden]` state attribute:
+**Fix**: scope drawer styles by the `[aria-hidden]` state attribute:
 
 ```css
 .dropdown[aria-hidden="true"] {
@@ -130,7 +130,7 @@ Elementor V4 hide dropdown qua `max-height: 0; opacity: 0` (KHÔNG `display: non
 }
 ```
 
-Detection trong DevTools:
+Detection in DevTools:
 ```js
 const drop = document.querySelector('.elementor-nav-menu--dropdown');
 drop.getBoundingClientRect().height  // > 0 even when aria-hidden=true = bug
@@ -139,7 +139,7 @@ drop.getAttribute('aria-hidden')     // 'true' | 'false'
 
 ## iframe-based responsive testing pattern
 
-Khi `resize_window` (Chrome MCP, browser tools) không actually constrain viewport (browser fullscreen Retina), screenshot trả wrong dimensions. Workaround: inject iframe fixed-width:
+When `resize_window` (Chrome MCP, browser tools) does not actually constrain the viewport (browser fullscreen on Retina), screenshots return the wrong dimensions. Workaround: inject a fixed-width iframe:
 
 ```js
 const iframe = document.createElement('iframe');
@@ -151,48 +151,48 @@ document.body.appendChild(iframe);
 iframe.contentWindow.innerWidth  // = 371 (correct mobile viewport)
 ```
 
-Ưu điểm: chính xác viewport, click hamburger và verify drawer interaction trong iframe context.
+Advantage: accurate viewport, plus you can click the hamburger and verify drawer interaction inside the iframe context.
 
 ## Container budget for nav decorations
 
-Khi thêm icons/badges/decorations vào nav (mask-image SVG, status pills, count badges), tính TỔNG width budget TRƯỚC khi add:
+When adding icons / badges / decorations to a nav (mask-image SVG, status pills, count badges), calculate the TOTAL width budget BEFORE adding:
 
 ```
 container_width = sum(item_widths) + sum(gaps) + decorations
 nav_total_width = N × (text_width + icon_width + gap) - last_gap
 ```
 
-**Bug pattern**: Round 4 polish thêm SVG line icons (12-14px) before nav text qua `mask-image` data URI. Mỗi link width tăng ~22px (icon + gap). Total 5 links × 22px = 110px overflow → nav wraps to 2 rows. Container header-nav column width fixed ~440px không grow.
+**Bug pattern**: Round-4 polish adds SVG line icons (12–14px) before nav text via `mask-image` data URI. Each link gains ~22px (icon + gap). 5 links × 22px = 110px overflow → nav wraps to 2 rows. Fixed-width container does not grow.
 
-**Fix (chọn 1)**:
-1. **Drop decorations** (đơn giản nhất nếu không essential)
-2. **Make container flexible**: `flex: 1 1 0` để grow theo content. Xem [`elementor-mcp.md` "Column width: `_column_size` ≠ width enforcement"](elementor-mcp.md).
-3. **Hover-only icons**: show icon ONLY khi `:hover` — avoid normal-state overflow:
+**Fix (pick one)**:
+1. **Drop decorations** (simplest if not essential)
+2. **Make container flexible**: `flex: 1 1 0` so it grows with content. See [`elementor-mcp.md` "Column width: `_column_size` is not enforced"](elementor-mcp.md).
+3. **Hover-only icons**: show the icon ONLY on `:hover` — avoids normal-state overflow:
    ```css
    .nav-item .icon { width: 0; opacity: 0; transition: 0.2s; }
    .nav-item:hover .icon { width: 14px; opacity: 1; margin-right: 6px; }
    ```
 
-Rule: container fixed-width có cap số chars + decorations. Test mọi breakpoint sau khi add decorations.
+Rule: a fixed-width container caps the number of chars + decorations. Test all breakpoints after adding decorations.
 
 ## Scroll height optimization ROI
 
-Khi audit homepage scroll height ~9800px và muốn giảm, tránh false-economy "compress section padding".
+When auditing a homepage at ~9800px scroll height and wanting to shrink it, avoid the false-economy "compress section padding".
 
 **Measured ROI** (homepage 9800px audit):
 - Section outer padding 80→64px × 3 sections = expected 96px savings
-- **Actual savings: ~80px = 0.8% page height**
-- Visually section "tighter" nhưng KHÔNG dramatic giảm scroll
+- **Actual savings: ~80px = 0.8% of page height**
+- Visually the section feels "tighter" but this is NOT a dramatic scroll reduction
 
-**Effective optimizations** (target 20%+ giảm):
+**Effective optimizations** (target 20%+ shrink):
 1. **Compress INNER content** (bigger ROI):
-   - Text-editor `margin-bottom` reduce
-   - Heading `line-height` tighten (1.2 → 1.1)
-   - Image `max-height` clamp
+   - Reduce text-editor `margin-bottom`
+   - Tighten heading `line-height` (1.2 → 1.1)
+   - Clamp image `max-height`
 2. **Convert vertical → horizontal** layout:
-   - 5 stacked icon-boxes → 5-col grid (saves ~400-600px)
+   - 5 stacked icon-boxes → 5-col grid (saves ~400–600px)
    - Vertical timeline → horizontal scroll-x
-3. **Defer/lazy-load below-fold sections** (intersection observer)
-4. **Audit content essential vs decorative** — remove sections không pull weight
+3. **Defer / lazy-load below-fold sections** (intersection observer)
+4. **Audit content essential vs decorative** — remove sections that don't pull weight
 
-**Rule**: outer padding tweak hiệu quả ~5-10% page reduction max. Cần optimize INNER content + layout strategy nếu muốn giảm 20%+. **Measure before & after** để validate ROI — đừng deploy "có cảm giác chặt hơn" mà không số liệu.
+**Rule**: outer padding tweaks max out at ~5–10% page reduction. To shrink 20%+ you need INNER content + layout strategy. **Measure before & after** to validate ROI — don't ship "feels tighter" without numbers.
