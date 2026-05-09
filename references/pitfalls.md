@@ -220,6 +220,48 @@ CSS Grid behavior: if a grid item has explicit `width`, the item respects that w
 
 **Fix**: clear the `width` property on grid items so `grid-template-columns` controls sizing.
 
+### 8. Elementor `background_image` is NOT inline — it's in `post-{ID}.css`
+
+After `batch_update` sets `background_image` for a section, `grep` on the rendered HTML does not find the URL. It is NOT broken — Elementor renders bg-image to `wp-content/uploads/elementor/css/post-{ID}.css` (an external stylesheet), not inline `<style>`.
+
+**Verify the right way**:
+```bash
+# Fetch the post CSS file, not the page HTML
+curl -sL "https://example.com/wp-content/uploads/elementor/css/post-43.css" | grep "<url-pattern>"
+
+# Or via DevTools → Computed styles on the section element
+```
+
+**Lesson**: when auditing Elementor visual settings (`background_image`, `background_color` for some setups, custom CSS, responsive paddings), do NOT grep the page HTML — fetch the post CSS file separately, or read the computed style.
+
+This also explains why a `background_image` change might not appear after `update_page_from_file`: the `_elementor_data` is updated, but `post-{ID}.css` is regenerated only when `save_post` fires. See [`elementor-mcp.md`](elementor-mcp.md) "`update_page_from_file` does NOT regen post_content" — same root cause.
+
+### 9. CRITICAL: NEVER append a child to `.elementor-container`
+
+`.elementor-container` has `display: flex; flex-wrap: nowrap`. Any element appended via `inner.appendChild(...)` becomes a flex item and SHARES width with the existing children → existing columns get squeezed (text wraps to one word per line).
+
+**Reproduce**: append a `<div class="x-testi-grid">` to the `.elementor-container` of a section that has 4 testimonial columns. Result: 4 columns squeeze to 80px each, the new grid takes ~1240/1559px.
+
+**Fix — inject at SECTION level, NOT inside the container**:
+```js
+// ❌ WRONG — becomes a flex item, squeezes siblings
+inner.appendChild(grid);
+
+// ✅ CORRECT — sibling section after the original
+sec.parentNode.insertBefore(grid, sec.nextSibling);
+
+// ✅ CORRECT — section-level child OUTSIDE the container (still inside the section)
+sec.appendChild(wrapperDiv);  // sibling to .elementor-container, not inside it
+```
+
+**When sibling-section approach is best**: testimonial cards, product gallery, founder section, full new content blocks.
+
+**When section-level child OK**: a small element pinned to the section bottom (e.g. CTA card below a form). Wrap it in a `<div style="width:100%;padding:0 24px">` to escape the elementor-container's flex sizing.
+
+**Detection symptom**: existing columns suddenly squeeze when a new element appears. Check the new element's parent — if it is `.elementor-container`, that is the bug.
+
+Applies to: any JS injection from a mu-plugin / code snippet that adds DOM into Elementor sections post-render. See also [`workflows/clone-transform-pattern.md`](../workflows/clone-transform-pattern.md) "Cross-page internal linking — Add NEW DOM > regex existing DOM".
+
 ## CSS Cascade / Specificity pitfalls
 
 ### 1. `_css_classes` saves OK in MCP but doesn't always render to the DOM

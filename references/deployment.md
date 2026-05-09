@@ -257,6 +257,72 @@ curl -u "$WP_USER:$WP_PASS" -X POST \
   "$WP_SITE/wp-json/wp/v2/media"
 ```
 
+## MariaDB modern containers — `mariadb` not `mysql`
+
+Modern MariaDB 11+ Docker images ship the `mariadb` family of binaries instead of `mysql`. If you are scripting backup / restore and the container has only MariaDB, the classic command names are missing.
+
+| Classic `mysql` | MariaDB equivalent |
+|---|---|
+| `mysql` | `mariadb` |
+| `mysqldump` | `mariadb-dump` |
+| `mysqladmin` | `mariadb-admin` |
+| `mysqlimport` | `mariadb-import` |
+
+Restore script must use `mariadb` not `mysql`. Also, the env var `MYSQL_ROOT_PASSWORD` may not be set in the container — read `MARIADB_ROOT_PASSWORD` (or `MARIADB_ROOT_PWD` per your project) from the project `.env`:
+
+```bash
+RPWD=$(grep MARIADB_ROOT_PWD .env | cut -d= -f2)
+
+# Restore from gzipped backup into a temp DB (safer than touching production)
+docker exec <db-container> mariadb -u root -p"$RPWD" -e \
+  "DROP DATABASE IF EXISTS recover_db; CREATE DATABASE recover_db;"
+zcat backup.sql.gz | docker exec -i <db-container> mariadb -u root -p"$RPWD" recover_db
+
+# Dump just the rows you need from the temp DB
+docker exec <db-container> mariadb-dump -u root -p"$RPWD" --skip-extended-insert \
+  --where="post_id IN (525, 541) AND meta_key='_elementor_data'" \
+  recover_db wp_postmeta > /tmp/recover.sql
+```
+
+When in doubt, check what the container has: `docker exec <db-container> which mariadb mysql 2>/dev/null`.
+
+## Silent fatal debugging — plugin isolation chain
+
+When a site is 500 and `debug.log` is empty (PHP-FPM crashed before WP could write — see [`pitfalls.md`](pitfalls.md) "AZDIGI shared host PHP-FPM worker exhaustion"), use this chain to localize the bug:
+
+**1. Check log file via web (some hosts allow it)**:
+```bash
+curl https://example.com/wp-content/uploads/debug.log  # may return file content if .htaccess allows
+```
+⚠️ Some hosts (LiteSpeed/AZDIGI) return `200 + size 283171` for nonexistent files (the HTML 404 page is served). GET to inspect actual content size before trusting it.
+
+**2. Plugin isolation test — REST PATCH deactivate one at a time**:
+```bash
+# Deactivate
+curl -u "$WP_USER:$WP_PASS" -X POST \
+  "$WP_SITE/wp-json/wp/v2/plugins/<slug>/<slug>" \
+  -d '{"status":"inactive"}'
+
+# Test the broken endpoint (e.g. retry the failing media upload)
+curl -X POST "$WP_SITE/wp-json/wp/v2/media" -F file=@/tmp/test.jpg
+
+# Reactivate
+curl -u "$WP_USER:$WP_PASS" -X POST \
+  "$WP_SITE/wp-json/wp/v2/plugins/<slug>/<slug>" \
+  -d '{"status":"active"}'
+```
+Sequence-test all suspect plugins. The one whose deactivation fixes the symptom is the culprit.
+
+**3. Try multiple upload paths (different code paths = different failure modes)**:
+- `POST /wp-json/wp/v2/media` (REST, App Password)
+- `POST /wp-admin/async-upload.php` (admin AJAX, nonce + cookies)
+- MCP `sideload_image` ability
+Each one triggers a different hook chain. If one fails and another succeeds, the failing one's hook chain is the bug location.
+
+**4. Tiny PNG bypass test** — a 1×1 transparent PNG (~68 bytes) often skips thumbnail generation (no need to scale). Bypassing GD-intensive code can isolate "GD library bug" vs "PHP fatal somewhere else". A tiny PNG that uploads OK while a real JPG fails = the bug is in the resize / thumbnail path, not in auth / WAF / memory.
+
+**5. Surface the fatal directly via mu-plugin** — see [`pitfalls.md`](pitfalls.md) "Emergency debug pattern".
+
 ## WP REST useful (but underdocumented) endpoints
 
 Endpoints not prominently documented in WP core but extremely useful for automation:

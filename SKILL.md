@@ -73,6 +73,7 @@ Summary:
 | OG image generation at scale | `workflows/og-image-generation.md` |
 | SEO audit on N pages | `workflows/seo-audit.md` |
 | SMTP relay setup (form email) | `workflows/smtp-relay-setup.md` |
+| Bilingual / multilingual site (Polylang) | `workflows/multilingual-polylang.md` |
 
 ## Anti-patterns — STRICTLY avoid
 

@@ -89,7 +89,27 @@ The tested combination, deployed in production. Do not change on a whim — any 
 - Elementor addon packs (Essential Addons, Premium Addons, Crocoblock JetElements) — bloat. Use native widgets + ACF / JetEngine.
 - WPBakery, Divi, Bricks, Beaver Builder — not in the stack
 - Themes other than Astra — Astra Free only
-- Astra Pro — overlaps with Elementor Pro
+- Astra Pro — overlaps with Elementor Pro (see "Astra Pro vs Elementor Pro feature overlap" below)
+
+## Astra Pro vs Elementor Pro feature overlap
+
+When a site already has Astra Pro (legacy license, paid before) AND Elementor Pro, many features duplicate. Pick one tool per feature to avoid double-firing markup, conflicting CSS, and wasted licenses.
+
+| Feature | Astra Pro | Elementor Pro Theme Builder | Recommended |
+|---|---|---|---|
+| Header builder | ✅ | ✅ | **Elementor** — flex layout + responsive control is stronger |
+| Footer builder | ✅ | ✅ | **Elementor** — Theme Builder template more powerful |
+| Mega menu | ✅ | ✅ | **Elementor** — better mobile responsive |
+| Sticky / transparent header | ✅ | ✅ | Either — pick the one matching your header builder choice |
+| Custom layouts (hooks) | ✅ Hooks API | ✅ Theme Builder locations | **Elementor** — more flexible, easier display conditions |
+| Schema markup (LocalBusiness) | ✅ | ❌ (use Rank Math) | **Disable Astra schema, use Rank Math** — see `pitfalls.md` "Schema duplicate" |
+| Mobile breakpoint control | ✅ | ✅ | Either |
+| Page-level header/footer disable | ✅ | ✅ | Whichever builder you picked |
+| Performance impact | Lighter | Heavier | Astra for non-builder pages, Elementor where you need the builder |
+
+**Recommendation when both are licensed**: keep Astra Pro for theme system fonts / colors / global typography integration. Use Elementor Pro Theme Builder for everything visible (header / footer / loops / single post / archive / 404). Disable Astra schema (Rank Math handles it). Disable Astra header / footer when an Elementor Theme Builder template covers the location (Astra free 4.13.x does NOT auto-suppress — see [`workflows/new-site-setup.md`](../workflows/new-site-setup.md) "Decision tree: header / footer rendering" + Astra-Elementor bridge mu-plugin).
+
+**Recommendation for new sites**: Astra Free + Elementor Pro is enough. The Pro features in Astra duplicate Elementor Pro, so Astra Pro is rarely worth $59+/year on top of Elementor Pro.
 
 ## CSS architecture: mu-plugin master CSS preferred over Code Snippets
 
