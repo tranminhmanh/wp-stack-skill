@@ -32,9 +32,9 @@ Tuy nhiên endpoint này chỉ là **registry**, KHÔNG phải MCP transport. MC
 Nếu site có **N plugin MCP**, cần **N connector** từ phía Claude:
 
 ```
-sitea-vn-global    → /mcp/mcp-adapter-default-server   (2 core tools)
-sitea-vn-elementor → /mcp/elementor-mcp-server         (~110 elementor tools)
-sitea-vn-<other>   → /mcp/<other-server>               (...)
+acme-global    → /mcp/mcp-adapter-default-server   (2 core tools)
+acme-elementor → /mcp/elementor-mcp-server         (~110 elementor tools)
+acme-<other>   → /mcp/<other-server>               (...)
 ```
 
 ❌ **Anti-pattern**: chỉ tạo 1 connector global "all-in-one" → mất N-1 bộ tool.
@@ -44,8 +44,8 @@ sitea-vn-<other>   → /mcp/<other-server>               (...)
 Nếu MCP đếm < số ability mong đợi (so với site khác đang chạy đủ), khả năng cao là **client thiếu connector**, không phải plugin chưa cài:
 
 ```
-ClinicX:     48 elementor-mcp/* abilities REGISTERED + 0 tools VISIBLE → 1 connector thiếu
-sitea: 48 elementor-mcp/* abilities REGISTERED + 110 tools VISIBLE → 2 connector OK
+Site B: 48 elementor-mcp/* abilities REGISTERED + 0 tools VISIBLE → 1 connector thiếu
+Site A: 48 elementor-mcp/* abilities REGISTERED + 110 tools VISIBLE → 2 connector OK
 ```
 
 → Khi gặp error `MCP error -32603: Failed to get ability details: 404`, thứ tự debug:
