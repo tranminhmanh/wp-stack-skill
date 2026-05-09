@@ -152,10 +152,16 @@ This project follows [Semantic Versioning](https://semver.org/). Current version
 
 ---
 
-## About the maintainer
+## Author
 
-Built and maintained by **Trần Minh Mạnh** ([@tranminhmanh](https://github.com/tranminhmanh)) — independent WordPress + Elementor developer based in Vietnam, focused on B2B sites where the form actually has to convert.
+<a href="https://github.com/tranminhmanh">
+  <img src="https://github.com/tranminhmanh.png?size=160" align="right" width="160" alt="Trần Minh Mạnh">
+</a>
 
+**Trần Minh Mạnh** — independent WordPress + Elementor developer based in Vietnam, focused on B2B sites where the form actually has to convert.
+
+- Website: [tranminhmanh.id.vn](https://tranminhmanh.id.vn/)
+- LinkedIn: [linkedin.com/in/tranminhmanh](https://www.linkedin.com/in/tranminhmanh/)
 - GitHub: [@tranminhmanh](https://github.com/tranminhmanh)
 - Email: [tranminhmanh.official@gmail.com](mailto:tranminhmanh.official@gmail.com)
 
@@ -165,9 +171,33 @@ The patterns in this skill come from production debugging on three sites I built
 - **Regional food brand** — Astra Free + Elementor `elementor_canvas` template on shared hosting. Source of most WAF + shared-host pitfalls (Imunify360, PHP-FPM worker exhaustion, LiteSpeed two-path cache invalidation, addon-domain docroot verification).
 - **Event SFX premium B2B** — VPS + Docker + msrbuilds/elementor-mcp on a fresh stack. Source of the MCP-specific gotchas (image widget full object, MCP Abilities API input wrapper format, async-upload vs REST media fallback chain).
 
-Open to consulting on WordPress + Elementor + Claude Code projects — best to reach out via the email above.
+Open to consulting on WordPress + Elementor + Claude Code projects — reach out via email or LinkedIn.
 
 For contributions, bug reports, and questions about the patterns themselves, please use [Issues](https://github.com/tranminhmanh/wp-stack-skill/issues) or [Discussions](https://github.com/tranminhmanh/wp-stack-skill/discussions) — much more useful than email since others can search them later.
+
+<details>
+<summary><strong>Tiếng Việt</strong></summary>
+
+<br>
+
+**Trần Minh Mạnh** — WordPress + Elementor developer độc lập, làm việc tại Việt Nam, tập trung vào site B2B mà form thực sự phải convert.
+
+- Website: [tranminhmanh.id.vn](https://tranminhmanh.id.vn/)
+- LinkedIn: [linkedin.com/in/tranminhmanh](https://www.linkedin.com/in/tranminhmanh/)
+- GitHub: [@tranminhmanh](https://github.com/tranminhmanh)
+- Email: [tranminhmanh.official@gmail.com](mailto:tranminhmanh.official@gmail.com)
+
+Các pattern trong skill này được trích xuất từ quá trình debug production trên 3 site tôi tự build và maintain trong 3 tháng vừa qua:
+
+- **Site B2B logistics** — 8 trang pillar quốc gia + 26 subpage cặp cảng + 5 blog post long-tail. Nguồn của bug Pro Form `custom_id` silent fail 9 tuần, pattern dọn dead-link do slug mismatch, và phần lớn workflow clone-transform bulk-build.
+- **Site thực phẩm vùng miền** — Astra Free + Elementor `elementor_canvas` template trên shared hosting. Nguồn các pitfall liên quan WAF + shared host (Imunify360, PHP-FPM worker exhaustion, LiteSpeed 2-path cache invalidation, verify addon-domain docroot).
+- **Site event SFX B2B premium** — VPS + Docker + msrbuilds/elementor-mcp stack mới. Nguồn các gotcha MCP-specific (image widget cần full object, MCP Abilities API input wrapper format, async-upload vs REST media fallback chain).
+
+Open consulting cho dự án WordPress + Elementor + Claude Code — liên hệ qua email hoặc LinkedIn.
+
+Contribution, bug report, và câu hỏi về pattern → vui lòng dùng [Issues](https://github.com/tranminhmanh/wp-stack-skill/issues) hoặc [Discussions](https://github.com/tranminhmanh/wp-stack-skill/discussions) thay email — để người khác search được sau này.
+
+</details>
 
 ---
 
