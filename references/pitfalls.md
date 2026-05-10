@@ -955,3 +955,226 @@ rm /var/www/html/wp-content/mu-plugins/_dbg.php
 ```
 
 → Within 30 seconds you catch "Uncaught TypeError... in /path/to/plugin.php:123" without touching `wp-config.php`. Pattern reusable for any WP-on-Docker debugging.
+
+## Rank Math `updateRedirection` REST silent fail
+
+**Symptom**: `POST /wp-json/rankmath/v1/updateRedirection` with `objectID + hasRedirect + redirectionUrl + redirectionType` returns `HTTP 200 {"id":"","action":"new","message":"New redirection created."}`. Looks like success. **But the frontend does NOT redirect** — `GET /old-slug/` either returns the original page (if still published) or 404 (if trashed). The Rank Math hook never kicks in.
+
+**Detection**: the empty `id: ""` field in the response is the smoking gun. A real save returns a numeric ID.
+
+**Reproduction**:
+```bash
+curl -u "$U:$APPPW" -X POST "https://<site>/wp-json/rankmath/v1/updateRedirection" \
+  -H "Content-Type: application/json" \
+  -d '{"objectID":1034,"hasRedirect":true,"redirectionUrl":"https://<site>/new-slug/","redirectionType":"301"}'
+# → HTTP 200 {"id":"","action":"new","message":"New redirection created."}
+
+curl -sI "https://<site>/old-slug/"
+# → HTTP 200 (page still serves) — NO 301 redirect
+```
+
+**Root cause** (most likely): the endpoint is internal admin AJAX expecting a session-based admin context (nonce + cookie). App Password context lacks an admin capability needed to actually persist into `wp_rank_math_redirections`. Or the rule persists but the Rank Math frontend hook is not active without a real admin session.
+
+**Fix — pick one**:
+1. **Manual GUI** (recommended for ≤10 redirects): wp-admin → Rank Math → Redirections → Add New. Source `old-slug` (Exact match), Target full URL, Type 301.
+2. **Plugin alternative**: install [Redirection by John Godley](https://wordpress.org/plugins/redirection/) — its REST API is reliable, supports App Password.
+3. **`.htaccess`** (when SSH / file access available): `Redirect 301 /old-slug/ /new-slug/`. Survives plugin churn.
+
+**NOT to confuse with** `rankmath/v1/updateMeta` — that endpoint DOES work via App Password for `rank_math_*` keys (see [`seo-checklist.md`](seo-checklist.md) "Rank Math meta — bulk update qua REST"). Different handlers, different permission paths.
+
+**Reusability**: universal for any Rank Math site needing programmatic redirect management.
+
+## Astra `site-post-title=disabled` per-post toggle for blog H1 duplicate
+
+**Symptom**: Astra blog posts have **2 H1s** in the rendered HTML — `<h1 class="entry-title">` injected by Astra + a second `<h1>` inline in `post_content` (Gutenberg or migrated from classic editor). Customizer global "Display Page Title" toggle is too coarse — disabling it removes the entry-title H1 from EVERY post (some need it, some have inline H1).
+
+**Detection**: bulk list posts with H1 count >1:
+```python
+# Pseudocode — count <h1> per rendered post
+posts_with_dup_h1 = [p for p in posts if rendered_h1_count(p) > 1]
+```
+
+**Fix — per-post Astra meta toggle** (Astra has a per-post `site-post-title` meta that overrides the Customizer global):
+```bash
+# Via WP MCP (Astra-specific endpoint)
+mcp astra-update-post-meta --post-id=N --key="site-post-title" --value="disabled"
+
+# Or via direct WP REST (if Astra meta is registered as REST-exposed)
+POST /wp/v2/posts/N
+{"meta":{"site-post-title":"disabled"}}
+```
+
+After save: Astra theme skips rendering `<h1 class="entry-title">` for that post → inline H1 in `post_content` becomes the only H1 → count drops to 1.
+
+**Bulk-verified**: 81 posts in one run, 0 errors, 100% H1 reduction from 2→1.
+
+**Anti-pattern caution**:
+- ❌ Do NOT apply to posts that have **only** the Astra entry-title H1 and NO inline H1 → result is 0 H1 (worse problem). Verify `post_content` has an inline `<h1>` first via `GET /wp/v2/posts/N?context=edit`.
+- ❌ Do NOT apply to Elementor pages — Elementor has its own page template logic (`elementor_canvas` etc.). For Elementor pages, see "Astra entry-title H1 duplicates the Elementor H1" above.
+
+**Use cases**:
+- Astra site inherited from a template / page builder where posts have inline H1 in Gutenberg + the theme's entry-title concurrently
+- Migration from Classic Editor (with inline H1) to a theme builder, leaving duplicate H1s
+
+**Reusability**: universal for Astra + Gutenberg / inline-content sites.
+
+## CRITICAL: Element Pack Pro legacy `display_condition_list: subscriber` halts container rendering
+
+**Symptom**: a container saved via MCP renders fine in the Elementor editor, but on the live frontend the container (and EVERY container after it in the page) is missing from the rendered HTML. `get-page-structure` shows the container exists in `_elementor_data` — the data is fine; the rendering pipeline drops it.
+
+**Detection** — compare structure JSON vs rendered HTML:
+```bash
+# Structure JSON shows 7 top-level containers
+mcp elementor-mcp/get-page-structure post_id=N | jq '.elements | length'
+# → 7
+
+# Rendered HTML stops at container 4 — last 3 are missing
+curl -s "https://<site>/page/" \
+  | grep -oE 'data-id="[a-z0-9]+"[^>]*data-element_type="container"' | wc -l
+# → 4
+
+# Inspect the last rendered container — usually has the legacy filter
+curl -u "$U:$APPPW" "https://<site>/wp-json/wp/v2/pages/N?context=edit" \
+  | jq '.meta._elementor_data' | jq -r '..|.display_condition_list? // empty'
+# → [{"display_condition_login_status":"subscriber","_id":"5f21ada"}]
+```
+
+**Root cause**: Element Pack Pro (BdThemes) attaches a default `display_condition_list` filter to many widgets / containers when an imported template is applied. With `display_condition_login_status: "subscriber"`, the container is hidden for non-logged-in users. Even when `ep_display_conditions: []` is empty (the GUI shows "off"), the legacy `display_condition_list` array still affects the render pipeline. Worse: it sometimes halts ALL siblings rendered AFTER that container, not just the affected one.
+
+**Fix — pick one**:
+1. **Detect + clear** via update-element / update-widget setting `display_condition_list: []` explicitly:
+   ```python
+   update-element(element_id="container-id", settings={"display_condition_list": []})
+   ```
+   ⚠️ Partial update may not override the array (Elementor merges by key). Verify after save.
+2. **Remove + recreate** the legacy container (recommended when partial update doesn't stick): `remove-element` then `add-container` fresh, copy widgets across.
+3. **Audit pre-deploy**: walk `_elementor_data` for any `display_condition_list[*].display_condition_login_status == "subscriber"` and clear it before pushing.
+
+**Prevention**: when redesigning pages on a site with Element Pack Pro active, add this audit to your post-edit verification:
+```python
+# After every batch_update, grep _elementor_data for the legacy filter
+data = json.loads(get_post_meta(post_id, '_elementor_data', True))
+def find_legacy_filter(els, path=""):
+    for i, el in enumerate(els):
+        s = el.get("settings", {})
+        if any(c.get("display_condition_login_status") == "subscriber"
+               for c in s.get("display_condition_list", [])):
+            print(f"⚠️ {path}/[{i}] has legacy subscriber filter — clear it")
+        find_legacy_filter(el.get("elements", []), f"{path}/[{i}]")
+find_legacy_filter(data)
+```
+
+**Reusability**: universal for sites with Element Pack Pro (BdThemes) + Elementor.
+
+## Elementor 4.0 `update-page-settings custom_css` saves but does not load on frontend
+
+**Symptom**: `update-page-settings(post_id=N, settings={"custom_css": "..."})` returns `success: true`, the value is persisted in `_elementor_page_settings` post meta. **But** the frontend has NO `<style>` tag for the rule. View-source shows nothing. CSS does not apply.
+
+**Detection**:
+```bash
+curl -u "$U:$APPPW" "https://<site>/wp-json/wp/v2/pages/N?context=edit" \
+  | jq '.meta._elementor_page_settings.custom_css'
+# → "body .my-class { color: red; }"  ← saved correctly
+
+curl -s "https://<site>/page/" | grep -c 'my-class'
+# → 0  ← rule never reaches frontend
+```
+
+**Root cause** (Elementor 4.0 quirk): the field `custom_css` on individual page settings is stored but the V4 atomic-mode renderer does NOT output it. Possibly a 3.x → 4.x migration gap, or a Pro-license check that fails silently when license activation lapses.
+
+**Workaround**: inject CSS via an HTML widget at position 0 of the first container. Browsers treat `<style>` inside `<body>` as scoped page CSS (HTML5 valid):
+```python
+add-html(
+  parent_id="<first-container-id>",
+  position=0,
+  html_content='<style id="page-design-system">/* CSS rules here */</style>'
+)
+```
+
+Verified to work for: section padding rhythm, card aspect-ratio constraints, form button overrides, FAQ accordion styling.
+
+**Lessons**:
+- Do NOT trust the field name `custom_css` in page settings on Elementor 4.0 — verify the frontend view-source after every set.
+- HTML widget injection is the more reliable workaround for Elementor 4.0 atomic mode.
+- Use `<style id="...">` to make the rule debuggable in DevTools.
+- For SITE-WIDE custom CSS, the kit `custom_css` (`update-page-settings(post_id=<elementor_active_kit>)`) DOES load — different code path. Only the per-page `custom_css` is broken.
+
+**Reusability**: universal for any site on Elementor 4.0+ with atomic mode.
+
+## Pro FontAwesome icons render empty on Free Elementor
+
+**Symptom**: an icon name set in an `add-icon-box` / `add-icon` MCP call (e.g. `champagne-glasses`, `cake-candles`) renders as an empty box on the frontend. No visible icon. No error.
+
+**Root cause**: the icon belongs to FontAwesome **Pro** (paid license). Elementor only ships FontAwesome **Free**. The renderer cannot find the glyph → silently empty. There is no fallback.
+
+**Fix — substitute with FA Free equivalents**:
+
+| Pro (broken) | Free (works) |
+|---|---|
+| `champagne-glasses` | `glass-cheers` |
+| `cake-candles` | `birthday-cake` |
+| `champagne-glass` | `glass-martini-alt` |
+| `face-smile` | `smile` |
+| `face-frown` | `frown` |
+| `house` | `home` |
+| `bars-staggered` | `align-justify` |
+
+**Verify before picking**: search [fontawesome.com/v5/free](https://fontawesome.com/v5/free) — anything not listed is Pro-only. The skill stack is Elementor Free / Pro **without** FA Pro license, so always pick from Free icon set.
+
+**Alternative for missing-but-needed glyphs**: emoji directly in widget text (`📅 ⚓ ⚡ 💎`) renders 100% reliably across browsers, no font dependency. See [`elementor-mcp.md`](elementor-mcp.md) "Counter icon" entry.
+
+**Reusability**: universal for Elementor Free / Pro (no FA Pro license).
+
+## Fluent Forms shortcode renders empty if the form has 0 fields
+
+**Symptom**: the shortcode `[fluentform id="3"]` is embedded in an Elementor widget. The form HTML wrapper renders, the submit button shows, but **no input fields appear**. Submission does nothing.
+
+**Root cause**: Fluent Forms allows creating a form record with `status=published` and **0 fields** in `form_fields` (empty JSON array). The form ID exists, the published flag is set, but the field list is empty.
+
+**Detection**:
+```bash
+# Via DB (need direct access)
+SELECT id, title, form_fields FROM wp_fluentform_forms WHERE id=3;
+# form_fields = "[]" → empty
+```
+
+Or in WP Admin → Fluent Forms → Forms → click form → Editor tab → check the left "Form Fields" panel. Empty = the bug.
+
+**Fix**: use the Fluent Forms editor (browser, not MCP) to drag fields in:
+1. WP Admin → Fluent Forms → All Forms → click the form ID
+2. Editor tab → drag from the "Input Fields" panel (Name, Email, Text Input, Dropdown, Date/Time, ...)
+3. Save Form (top-right)
+4. Preview tab → verify the rendered output
+
+**Anti-pattern caution**:
+- Do NOT assume `status=published` = form usable. Always verify the field list.
+- Fluent Forms FREE does NOT have a Phone field. Workaround: Text Input with regex validation pattern.
+- Email Notification is configured separately (Settings & Integrations tab). Without it, submissions are saved to DB but no email is sent.
+
+**Reusability**: universal for any site using Fluent Forms (free or pro).
+
+## LiteSpeed lazy-load rewrites `src=""` runtime — Lighthouse "missing src" red herring
+
+**Symptom**: Lighthouse / DevTools / view-source shows an `<img class="..." src="" data-src="https://real-url.jpg">`. Looks like a code bug (URL was lost). Actually the image URL is fine — LiteSpeed Cache "Lazy Load Images" feature rewrites `src="real.jpg"` → `src=""` + `data-src="real.jpg"` at runtime, then JS swaps `src` back when the image enters the viewport.
+
+**Verify the image actually exists**:
+```bash
+# HEAD the URL extracted from data-src — expect 200 + correct content-length
+curl -sI "https://<site>/wp-content/uploads/2026/05/real.jpg"
+# → HTTP/2 200, content-length: 12345
+```
+
+If HEAD returns 200 with the right content-length, the image exists. The empty `src=""` is the lazy-load placeholder, not a bug.
+
+**The actual bug** (often masked by the red herring): the image variant being loaded is too large for its display size. Example: a 1008×1008 avatar shown at 56×56 → `data-src` points to the full-size 380KB original. Fix by referencing the `-150x150` variant (~7KB).
+
+**Lighthouse interpretation**:
+- "Image elements do not have explicit width and height" — also affected; LiteSpeed strips `width` / `height` attrs sometimes.
+- "Properly size images" → audit list shows `data-src` URLs that are oversized for display.
+
+**Fix path**:
+1. Identify oversized images via Lighthouse "Properly size images" audit.
+2. Replace `src` (and `data-src` after lazy-load swap) with the correct WordPress responsive variant (`-150x150`, `-300x300`, `-768x768`).
+3. For Elementor: re-set the image with the right `image_size` (`thumbnail`, `medium`, `medium_large`, `large`).
+
+**Reusability**: universal for any LiteSpeed Cache + lazy-load site.

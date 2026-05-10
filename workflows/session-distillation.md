@@ -90,7 +90,7 @@ Mỗi insight đáng distill phải có ≥4 trong 5:
 - "13 page của Site X thiếu H1" — quá specific, project memory chứ không skill
 - "Đôi khi MCP fail, restart" — không root cause, không reproduction
 - "Dùng Rank Math thay Yoast" — opinion không có data backing
-- "Site `<real-domain>.com` connector PKM thiếu endpoint" — leak customer / project name → re-write với generic placeholder
+- "Site `<real-domain>.com` connector `<acronym>` thiếu endpoint" — leak customer / project name → re-write với generic placeholder
 
 ✅ Pattern tốt:
 - "Astra entry-title H1 duplicate khi `_wp_page_template != 'elementor_canvas'`. Reproduce: tạo page qua REST không set template → check `<h1 class=entry-title>` xuất hiện. Fix: `update_post_meta(_wp_page_template, 'elementor_canvas')`. Reusable cho mọi site Astra + Elementor."
@@ -109,6 +109,7 @@ ALLOW="$ALLOW"'|wpastra\.com|elementor\.com|advancedcustomfields\.com|rankmath\.
 ALLOW="$ALLOW"'|claude\.com|anthropic\.com|keepachangelog\.com|semver\.org'
 ALLOW="$ALLOW"'|brevo\.com|sendgrid\.com|mailgun\.com|cloudflare\.com'
 ALLOW="$ALLOW"'|api\.replicate\.com|googleapis\.com|gstatic\.com|cdnjs\.cloudflare\.com'
+ALLOW="$ALLOW"'|fontawesome\.com|fluentforms\.com|dequeuniversity\.com|webaim\.org'
 
 # 1. Any real domain in skill content (only placeholders + 3rd-party allowed)
 grep -nrE "https?://[a-z0-9.-]+\.(com|vn|net|org|id\.vn|io)" \

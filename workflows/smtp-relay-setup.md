@@ -35,7 +35,7 @@ done
 '
 ```
 
-Expected pattern (ShipAsia trên BNIX):
+Expected pattern (typical budget VPS):
 ```
 OPEN  smtp-relay.brevo.com:587
 OPEN  smtp.gmail.com:587
@@ -55,7 +55,7 @@ Port 25 blocked = không thể self-host outbound SMTP. Port 587/465 OK = relay 
 | Resend | 3000/month | 10 phút | API key (HTTPS preferred) | Modern API, dev-friendly |
 | Mailgun | 5000 first 3 months | 15 phút | API key + SMTP relay | Strong deliverability nhưng free cap thấp dần |
 
-ShipAsia chọn **Brevo** — tradeoff tốt nhất: free đủ (3–5 mail/ngày × 100 = vẫn xa 300 quota), không hết hạn, deliverability cao (whitelisted IPs), domain DKIM đã đủ Gmail trust ngay mail đầu.
+A typical B2B 1-person operation picks **Brevo** — tradeoff tốt nhất: free đủ (3–5 mail/ngày × 100 = vẫn xa 300 quota), không hết hạn, deliverability cao (whitelisted IPs), domain DKIM đã đủ Gmail trust ngay mail đầu.
 
 ## Bước 3: DNS records (Brevo example)
 

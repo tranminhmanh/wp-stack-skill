@@ -145,7 +145,7 @@ $shared_map = [
     // Long-phrase keys ONLY — see substring trap rules below
     'Vận chuyển container'              => 'Container shipping',
     'Cước biển'                          => 'Ocean freight',
-    'Giải pháp ShipAsia'                 => 'ShipAsia solution',
+    'Giải pháp <Brand>'                  => '<Brand> solution',
     // ... 100-150 phrases for the shared common content
 ];
 

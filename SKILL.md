@@ -77,6 +77,12 @@ Summary:
 | SEO audit on N pages | `workflows/seo-audit.md` |
 | SMTP relay setup (form email) | `workflows/smtp-relay-setup.md` |
 | Bilingual / multilingual site (Polylang) | `workflows/multilingual-polylang.md` |
+| Image optimization at scale | `image-optim-recipes` + `workflows/lighthouse-driven-optim.md` |
+| Accessibility audit failures | `a11y-debugging` + `workflows/lighthouse-driven-optim.md` |
+| Fluent Forms styling / integration | `fluent-forms` + `pitfalls` |
+| Redesign a live page (preserve content) | `workflows/redesign-page.md` |
+| Verify visual layout claims (counter to bias) | `workflows/ui-verification.md` |
+| Brand-fact consistency across pages | `workflows/content-reference.md` + `templates/content-reference-template.md` |
 
 ## Anti-patterns — STRICTLY avoid
 

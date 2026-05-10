@@ -133,6 +133,46 @@ curl -sI "https://site.com/page/" | grep -i x-litespeed
 # x-litespeed-cache: miss      → server generated fresh, will cache next
 ```
 
+### LiteSpeed default static-asset TTL fails Lighthouse `uses-long-cache-ttl`
+
+**Symptom**: Lighthouse audit `uses-long-cache-ttl` fails. The static assets (JPEG, PNG, WebP, woff2, CSS, JS) return `cache-control: public, max-age=604800` (7 days) — LSCWP plugin default. Lighthouse expects ≥30 days for typical assets and ≥365 days for versioned assets.
+
+**Root cause**: LSCWP sets `max-age=604800` for static assets out of the box. The plugin assumes cache may need to be invalidated within a week. Lighthouse benchmarks against modern CDN best practices where versioned assets get 1-year TTL with `immutable`.
+
+**Fix**: prepend an `<IfModule mod_headers.c>` block in `.htaccess` BEFORE the `# BEGIN LSCACHE` block. `Header always set` runs late in the response chain and overrides LSCWP's defaults:
+
+```apache
+# Long-TTL override — must come BEFORE # BEGIN LSCACHE
+<IfModule mod_headers.c>
+  <FilesMatch "\.(jpe?g|png|gif|webp|avif|svg|ico|woff2?|ttf|eot|otf)$">
+    Header always set Cache-Control "public, max-age=31536000, immutable"
+  </FilesMatch>
+  <FilesMatch "\.(css|js)$">
+    Header always set Cache-Control "public, max-age=31536000"
+  </FilesMatch>
+</IfModule>
+
+# BEGIN LSCACHE
+# ... existing LSCWP block, untouched ...
+# END LSCACHE
+```
+
+- 31536000 seconds = 1 year
+- `immutable` flag on images/fonts: tells the browser the asset will never change — skip revalidation entirely. Safe because WordPress versions images via filename (`-1024x576`, `-rn[hash]`).
+- CSS/JS `immutable` only safe if assets carry `?ver=` query strings — WP core does this by default. If a plugin emits unversioned `<link>` / `<script>` tags, drop `immutable` for CSS/JS.
+
+**Verify**:
+```bash
+curl -sI "https://<site>/wp-content/uploads/2026/05/hero.jpg" | grep -i cache-control
+# expect: cache-control: public, max-age=31536000, immutable
+```
+
+**When NOT to apply 1-year TTL**:
+- Asset URLs without versioning (raw `/uploads/foo.png` referenced from a CDN that doesn't bust on file change) → use 30 days (`max-age=2592000`) instead.
+- Frequently-rotating sprite sheets or theme assets shipped via `enqueue_script` without `?ver=` → drop the rule for those file patterns.
+
+**Reusability**: universal for any LiteSpeed shared hosting where you have `.htaccess` write access. Same pattern works for Apache without LSCWP — just prepend the `<IfModule>` block at the top of `.htaccess`.
+
 ## Pre-deploy / pre-iteration cache-clear ritual
 
 When building / editing via MCP and immediately screenshotting / testing:

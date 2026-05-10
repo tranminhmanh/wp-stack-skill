@@ -1,6 +1,6 @@
 # Workflow: SEO Audit (3-tier pattern)
 
-Bulk audit N WordPress pages cho SEO health: title/meta/H1 hierarchy/schema/canonical/internal links/og:image. Pattern proven trên ShipAsia 52 pages, ~30 phút audit (vs ~1 tuần manual GUI Rank Math).
+Bulk audit N WordPress pages cho SEO health: title/meta/H1 hierarchy/schema/canonical/internal links/og:image. Pattern proven on a 52-page site, ~30 phút audit (vs ~1 tuần manual GUI Rank Math).
 
 ## Khi nào dùng
 
