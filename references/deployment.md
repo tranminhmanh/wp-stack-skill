@@ -134,6 +134,64 @@ Imunify360 on shared hosts scans content during cPanel API uploads. A `.php` fil
 
 Detection: response body contains "Imunify360" / "AI-Bolit" → confirmed.
 
+## cPanel Fileman/upload_files: `overwrite=1` flag + batch limit
+
+**Symptom 1 — overwrite fail**: `Fileman/upload_files` multipart against an existing filename returns `succeeded=0, failed=1, reason="file already exists"`. Without an explicit override, cPanel UAPI rejects re-upload by default.
+
+**Fix**: add the form field `-F "overwrite=1"`:
+```bash
+curl -H "$CP_AUTH" \
+  -F "dir=/home/user/example.com/wp-content/uploads/2026/05" \
+  -F "overwrite=1" \
+  -F "file-1=@local-image.jpg" \
+  "$CP_URL/Fileman/upload_files"
+# Response: reason="… succeeded, overwrote existing file with your upload."
+```
+
+**Symptom 2 — batch upload size limit**: round 1 of a multipart with N files succeeds, round 2 with the same shape times out or hits a WAF block.
+
+**Pattern**: gather files into batches of **5–9** per request. Multipart payloads >5MB OR >10 files per request risk:
+- WAF (Imunify360, mod_security) flagging the request
+- PHP `post_max_size` limit on cPanel default config
+- Server-side timeout
+
+```bash
+# Batch up to 9 files per request — sweet spot
+curl -H "$CP_AUTH" -F "dir=$DIR" -F "overwrite=1" \
+  -F "file-1=@a.jpg" -F "file-2=@b.jpg" -F "file-3=@c.jpg" \
+  -F "file-4=@d.jpg" -F "file-5=@e.jpg" -F "file-6=@f.jpg" \
+  -F "file-7=@g.jpg" -F "file-8=@h.jpg" -F "file-9=@i.jpg" \
+  "$CP_URL/Fileman/upload_files"
+```
+
+**Bash loop pattern for >9 files**:
+```bash
+batch=()
+for f in /local/path/*.jpg; do
+  batch+=("$f")
+  if [ ${#batch[@]} -eq 9 ]; then
+    curl_args=(-F "dir=$DIR" -F "overwrite=1")
+    for i in "${!batch[@]}"; do
+      curl_args+=(-F "file-$((i+1))=@${batch[i]}")
+    done
+    curl -H "$CP_AUTH" "${curl_args[@]}" "$CP_URL/Fileman/upload_files"
+    batch=()
+  fi
+done
+# Flush remainder
+if [ ${#batch[@]} -gt 0 ]; then
+  curl_args=(-F "dir=$DIR" -F "overwrite=1")
+  for i in "${!batch[@]}"; do
+    curl_args+=(-F "file-$((i+1))=@${batch[i]}")
+  done
+  curl -H "$CP_AUTH" "${curl_args[@]}" "$CP_URL/Fileman/upload_files"
+fi
+```
+
+**Real-world data point**: 139 image variants in 17 groups of ≤9 files → all succeeded, ~30 seconds total. Sweet spot per group: 5–9 files / ~3–5MB total.
+
+**Reusability**: universal for any cPanel host where you're using UAPI Fileman to bulk-upload media (image optimization round-trips, theme asset deploys, plugin file uploads).
+
 ## cPanel Fileman API endpoints vary by host
 
 Some hosts strip dangerous endpoints. A typical shared host only exposes:

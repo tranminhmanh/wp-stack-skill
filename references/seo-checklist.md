@@ -102,6 +102,20 @@ Maximize SERP coverage for long-tail keywords + commercial intent. Inject 3 sche
 
 Auto-generated from the Elementor Accordion widget when `faq_schema: "yes"` is set. Each tab → `Question` + `Answer`. No manual injection needed if the accordion already has it.
 
+⚠️ **CRITICAL: 1 FAQPage per page principle**. If a page has multiple accordions / toggles all with `faq_schema=yes`, Elementor emits multiple `<script type="application/ld+json">` blocks each declaring `@type: FAQPage`. Schema.org best practice (and Google's rich-result eligibility) is **ONE FAQPage per page** with ALL questions consolidated under `mainEntity`. Multiple FAQPage instances = invalid Schema → Google may ignore the lot.
+
+**Detection**:
+```bash
+curl -s "https://<site>/page/" | grep -c '"@type":"FAQPage"'
+# > 1 = problem
+```
+
+**Fix**:
+1. **Audit**: walk `_elementor_data` for widgets with `faq_schema="yes"`.
+2. **Consolidate**: merge all Q&A into ONE accordion (preferred — single rendered control) or ONE toggle. Apply `faq_schema: "yes"` only on that consolidated widget.
+3. **Disable schema** on the other widgets: set `faq_schema: ""` (empty string). DO NOT set `"no"` — Elementor versions vary on truthy interpretation; empty string is the safe clear.
+4. **Verify**: `grep -c '"@type":"FAQPage"' rendered.html` should equal 1.
+
 ### Hide the visual of the schema HTML widget
 ```css
 .x-schema-only { display: none; }
@@ -153,13 +167,92 @@ foreach ($pages as $page) {
 }
 ```
 
-## Rank Math meta NOT exposed via REST — one-shot mu-plugin pattern
+## Rank Math meta — bulk update qua REST
 
-`PATCH /wp/v2/pages/{id}` with `meta: {rank_math_description: "..."}` returns HTTP 200 but the meta does NOT change. Rank Math does not register `show_in_rest=true` on its meta keys, so the REST endpoint silently ignores the update.
+### Method 1 (PREFERRED): Rank Math `updateMeta` REST endpoint
 
-The same pattern applies to any third-party meta with `show_in_rest=false` (ACF private fields, custom plugin meta, hidden post meta).
+Rank Math Pro (verified v3.0.84) expose endpoint `/wp-json/rankmath/v1/updateMeta` cho **bulk per-post meta update qua REST với App Password Basic auth**. Battle-tested 85 posts, 8 giây, 0 errors:
 
-**Workaround**: token-guarded one-shot mu-plugin that calls `update_post_meta()` directly, runs once, then stubs itself.
+```bash
+POST /wp-json/rankmath/v1/updateMeta
+Authorization: Basic <base64 user:app-pw>
+Content-Type: application/json
+
+body: {
+  "objectID": 123,
+  "objectType": "post",        // "post" | "page" | "term"
+  "meta": {
+    "rank_math_title": "Custom title | Brand",
+    "rank_math_description": "Custom desc 150-160ch",
+    "rank_math_focus_keyword": "primary keyword",
+    "rank_math_canonical_url": "https://canonical/"
+  }
+}
+
+→ HTTP 200 {"slug":true,"schemas":[]}
+```
+
+Python helper (parallel-safe, different post IDs không conflict):
+```python
+import json, base64, urllib.request
+from concurrent.futures import ThreadPoolExecutor
+
+auth = "Basic " + base64.b64encode(f"{USER}:{APP_PW}".encode()).decode()
+
+def update_meta(post_id, meta):
+    payload = {"objectID": post_id, "objectType": "post", "meta": meta}
+    req = urllib.request.Request(
+        "https://<site>/wp-json/rankmath/v1/updateMeta",
+        data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+        headers={"Authorization": auth, "Content-Type": "application/json"},
+        method="POST"
+    )
+    return urllib.request.urlopen(req, timeout=20).getcode()
+
+# Bulk parallel
+with ThreadPoolExecutor(max_workers=6) as exe:
+    futs = [exe.submit(update_meta, p['id'], {"rank_math_title": p['new_title']}) for p in plan]
+```
+
+⚠️ **NOT to confuse with**:
+- `updateSettings` (global, returns 403 với App Password — admin GUI session required)
+- `updateRedirection` (returns 200 nhưng rule không kick in trên frontend — xem `pitfalls.md`)
+
+⚠️ **`updateMeta` silent fail when the meta key is NOT Rank-Math-managed**:
+
+The `updateMeta` endpoint only accepts keys whitelisted by Rank Math (anything starting with `rank_math_*` plus a few other plugin-registered keys). If you pass a key that's NOT in the whitelist (Astra theme meta like `site-post-title`, ACF private fields, custom plugin meta), the response is STILL `HTTP 200 {"slug":true,"schemas":[]}` — looks like success — but the meta is silently ignored, never saved.
+
+```python
+# ❌ Silent fail — Astra theme meta is not Rank-Math-managed
+body = {"objectID": 4992, "objectType": "post",
+        "meta": {"site-post-title": "disabled"}}    # Astra meta
+# Response: 200 {"slug":true}    ← looks fine
+# But: frontend still has 2 H1, the meta was NOT saved
+```
+
+`slug:true` in the response only confirms that the URL slug is valid — it does NOT confirm the meta itself was saved. To verify the save, fetch the post meta back via WP REST or render the page and grep the expected output.
+
+**Decision matrix**:
+| Meta key prefix | Use | Why |
+|---|---|---|
+| `rank_math_*` (title, description, focus_keyword, canonical_url, schemas) | ✅ Rank Math `updateMeta` REST | Native handler, App Pw OK |
+| Astra theme meta (`site-post-title`, etc.) | WP REST `POST /wp/v2/{type}/{id}` with `meta` (if registered REST-exposed) — or wp-admin GUI | NOT in Rank Math whitelist |
+| ACF private / hidden meta | Method 2 mu-plugin one-shot below | `show_in_rest=false` blocks REST |
+| Third-party plugin meta (custom CPT, hidden options) | Method 2 mu-plugin one-shot | Not registered for REST |
+
+When in doubt, always re-fetch and verify after the call.
+
+### Method 2 (LEGACY fallback): one-shot mu-plugin
+
+Vẫn còn applicable khi:
+- Rank Math version cũ chưa có `updateMeta` endpoint
+- Cần update meta của 3rd-party plugin khác (KHÔNG phải Rank Math)
+- ACF private fields (`show_in_rest=false`)
+- WP options không trong registered allowlist
+
+`PATCH /wp/v2/pages/{id}` với `meta: {rank_math_description: "..."}` returns HTTP 200 but the meta does NOT change qua route default — đó là vì Rank Math không register `show_in_rest=true` trên direct meta keys. NHƯNG endpoint riêng `updateMeta` của Rank Math có handler hooks ride trên permission khác, work qua App Password.
+
+**Workaround mu-plugin** (cho non-Rank-Math meta hoặc Rank Math version cũ): token-guarded one-shot mu-plugin that calls `update_post_meta()` directly, runs once, then stubs itself.
 
 ```php
 // wp-content/mu-plugins/_oneshot.php (deploy → hit URL → stub)
@@ -195,6 +288,56 @@ echo '<?php // disabled' > wp-content/mu-plugins/_oneshot.php
 - WP options that aren't in the registered allowlist
 
 When you need direct DB access without SSH, this pattern bridges the gap.
+
+## Eyebrow first-text trap — Rank Math meta-description fallback hijack
+
+**Symptom**: rendered `<meta name="description" content="EYEBROW LABEL · SHORT TAG">` shows ~30 chars of the eyebrow text instead of the intended 150-160-char description. Same for `og:description` and `twitter:description`. SERP snippet looks broken / uninformative.
+
+**Root cause**: Rank Math auto-generates meta description as a fallback when `rank_math_description` is not set explicitly, by picking the first text content on the page. The "eyebrow" design pattern (small uppercase label above the H1) is usually the first text node → Rank Math grabs it instead of the body paragraph.
+
+**Reproduction**:
+```html
+<!-- Hero with eyebrow first, then H1, then body paragraph -->
+<div class="elementor-heading-title">SERVICE LABEL · USP TAG</div>   <!-- eyebrow -->
+<h1>The actual page heading</h1>
+<p>The body sentence that should be the meta description...</p>
+
+<!-- Frontend rendered meta (Rank Math auto-fallback) -->
+<meta name="description" content="SERVICE LABEL · USP TAG" />
+<meta property="og:description" content="SERVICE LABEL · USP TAG" />
+<!-- ⚠️ truncated, not informative -->
+```
+
+**Fix — always set explicit Rank Math meta description after design changes**:
+```bash
+POST /wp-json/rankmath/v1/updateMeta
+Content-Type: application/json
+Authorization: Basic <base64>
+
+{
+  "objectID": N,
+  "objectType": "post",
+  "meta": {
+    "rank_math_description": "Full sentence 150–160 chars covering the page's value proposition and primary keyword.",
+    "rank_math_facebook_description": "Full sentence",
+    "rank_math_twitter_description": "Full sentence"
+  }
+}
+```
+
+**Verify after every design change** that touches the hero / first text block:
+```bash
+curl -s "https://<site>/page/" | grep -oE '<meta name="description"[^>]+>'
+```
+
+If the description matches an eyebrow / short tag, set it explicitly.
+
+**When this matters most**:
+- Eyebrow design pattern (uppercase label + middot separator)
+- Pages cloned from a template that had `rank_math_description` set on the original — the clone inherits empty
+- Pages built via MCP without an explicit description set
+
+**Reusability**: universal for any Elementor + Rank Math site that uses an eyebrow / kicker pattern in the hero.
 
 ## Inject Schema markup into `_elementor_data` via PHP
 

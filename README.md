@@ -65,7 +65,7 @@ wp-stack/
 ├── SKILL.md                          ← Entry point (Claude reads first)
 ├── README.md                         ← This file
 │
-├── references/                       ← Knowledge base (12 files)
+├── references/                       ← Knowledge base (17 files)
 │   ├── stack.md                      ← Standard stack and versions
 │   ├── design-tokens.md              ← Spacing / typography / shadows
 │   ├── elementor-mcp.md              ← MCP cheatsheet + widget gotchas
@@ -77,9 +77,14 @@ wp-stack/
 │   ├── security.md                   ← Hardening checklist
 │   ├── deployment.md                 ← Deploy workflow generic
 │   ├── vietnamese.md                 ← Vietnamese-locale concerns (fonts, slugs, schema)
-│   └── pitfalls.md                   ← 30+ pitfalls with detection + fix
+│   ├── mcp-architecture.md           ← Multi-plugin MCP endpoint architecture
+│   ├── wp-abilities.md               ← Direct REST ability call pattern
+│   ├── image-optim-recipes.md        ← Pillow PNG / JPEG re-encode recipes
+│   ├── a11y-debugging.md             ← Lighthouse / axe-core fix recipes
+│   ├── fluent-forms.md               ← Fluent Forms styling + integration
+│   └── pitfalls.md                   ← 40+ pitfalls with detection + fix
 │
-├── workflows/                        ← Step-by-step procedures (9 files)
+├── workflows/                        ← Step-by-step procedures (13 files)
 │   ├── new-site-setup.md             ← Set up a new site A → Z
 │   ├── add-cpt.md                    ← Create a Custom Post Type
 │   ├── theme-builder-loop.md         ← Build a Loop template
@@ -88,14 +93,19 @@ wp-stack/
 │   ├── og-image-generation.md        ← 4-tier OG image coverage strategy
 │   ├── seo-audit.md                  ← 3-tier SEO audit (PHP + Bash + Python)
 │   ├── smtp-relay-setup.md           ← Brevo SMTP relay for budget VPS
-│   └── multilingual-polylang.md      ← Polylang Free bilingual site (52 vi + 52 en)
+│   ├── multilingual-polylang.md      ← Polylang Free bilingual site (52 vi + 52 en)
+│   ├── lighthouse-driven-optim.md    ← Image optimization driven by Lighthouse audit
+│   ├── redesign-page.md              ← 5-state KEEP/MOVE/ENHANCE/REPLACE/REMOVE marking
+│   ├── ui-verification.md            ← Verify-don't-assume checklist (counter to bias)
+│   └── content-reference.md          ← Single-source-of-truth pattern for brand facts
 │
 └── templates/                        ← Reusable assets
-    ├── project-claude-md-template.md ← Template for project CLAUDE.md
-    └── snippets/                     ← PHP recipes
-        ├── elementor-data-update.php ← Safe _elementor_data update (Vietnamese-safe)
-        ├── wp-fix.php                ← Token-guarded recovery script (read warnings!)
-        └── og-image-generator.php    ← PHP GD OG image generator + WP attachment integration
+    ├── project-claude-md-template.md  ← Template for project CLAUDE.md
+    ├── content-reference-template.md  ← Single-source-of-truth template for brand facts
+    └── snippets/                      ← PHP recipes
+        ├── elementor-data-update.php  ← Safe _elementor_data update (Vietnamese-safe)
+        ├── wp-fix.php                 ← Token-guarded recovery script (read warnings!)
+        └── og-image-generator.php     ← PHP GD OG image generator + WP attachment integration
 ```
 
 ---

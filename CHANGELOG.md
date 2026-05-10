@@ -5,6 +5,68 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.2] — 2026-05-10
+
+### Changed
+
+- **`references/seo-checklist.md`** — corrected misleading section "Rank Math meta NOT exposed via REST". Battle-tested on a Rank Math Pro v3.0.84 site (85 posts, 8s, 0 errors): the `/wp-json/rankmath/v1/updateMeta` endpoint IS viable via App Password Basic auth for per-post bulk meta update (`rank_math_title`, `rank_math_description`, `rank_math_focus_keyword`, `rank_math_canonical_url`). The mu-plugin one-shot pattern is now LEGACY fallback for non-Rank-Math meta or older Rank Math versions only. Added Python parallel helper template (6 workers, parallel-safe across different post IDs).
+
+### Discovered — pending CANDIDATE promotion (need second-project verification)
+
+- **Astra `site-post-title=disabled` per-post meta toggle** as the safe fix for H1 duplicate when an inline content H1 coexists with the Astra entry-title H1. Verified on 81 posts: H1 count 2 → 1, zero false positives. Anti-pattern caution: do NOT apply on posts whose only H1 is the Astra entry-title — would result in 0 H1.
+- **Rank Math `/v1/updateRedirection` REST endpoint quirk** — endpoint returns HTTP 200 with `{"id":""}` and message "redirect created", but the rule does NOT actually trigger on the frontend. Likely an admin-AJAX endpoint requiring nonce/cookie session, not viable for App Password automation. Workaround: manual GUI redirect, or alternative redirect plugin (`Redirection` by John Godley).
+
+[0.2.2]: https://github.com/tranminhmanh/wp-stack-skill/releases/tag/v0.2.2
+
+## [0.3.0] — 2026-05-10
+
+Round 5 weekly insights distillation — 4 production sites this week (B2B logistics, food retail, event SFX, inherited B2B clinic), ~6,100 lines of `insights.md` parsed, 22 patterns promoted.
+
+### Added — 4 new reference files
+
+- **`references/image-optim-recipes.md`** — Pillow PNG quantize (`FASTOCTREE` for RGBA, `MEDIANCUT` for RGB), JPEG q82 progressive re-encode, srcset variant strategy, "don't blanket-optimize the uploads tree" anti-pattern.
+- **`references/a11y-debugging.md`** — Lighthouse / axe-core fix recipes: blended-rgba contrast math, `aria-level` attr workaround for heading-order, Elementor accordion `aria-selected` invalid attr fix, CF7 honeypot a11y pattern, mu-plugin scaffold for bulk-fix.
+- **`references/fluent-forms.md`** — high-specificity selector pattern to beat `--fluentform-primary` inline variable, input/checkbox styling, install + email setup, Free vs Pro decision matrix, Phone-field workaround on Free.
+
+### Added — 4 new workflow files
+
+- **`workflows/lighthouse-driven-optim.md`** — anchor-URL gotcha (`#section` inflates measured page weight), `total-byte-weight` audit as the priority list, sample multi-round optimization log.
+- **`workflows/redesign-page.md`** — 5-state Phase 2 marking system (KEEP / MOVE / ENHANCE / REPLACE / REMOVE) with phase 1 audit + phase 3 execution discipline. Counter to "remove old container, build fresh" content-loss anti-pattern.
+- **`workflows/ui-verification.md`** — verify-don't-assume checklist (screenshot live URL, measure pixels, test 3 viewports, inspect computed styles), counter to anchoring + confirmation bias. Includes flex-centering gotchas and "AI cannot trust its own visual reasoning" meta-pattern.
+- **`workflows/content-reference.md`** — single-source-of-truth pattern for brand facts. Plus `templates/content-reference-template.md` — starter file with 11 sections (brand identity, service catalog, portfolio DB, equipment, partners, blog catalog, tone, trust signals, SEO meta, conflicts table, usage guide).
+
+### Changed
+
+- **`references/pitfalls.md`** — appended 7 new pitfalls (~270 lines):
+  - Rank Math `updateRedirection` REST silent fail (returns 200, rule never kicks in via App Pw context)
+  - Astra `site-post-title=disabled` per-post toggle for blog H1 duplicate
+  - **CRITICAL**: Element Pack Pro legacy `display_condition_list: subscriber` halts container rendering for non-logged-in users
+  - Elementor 4.0 `update-page-settings custom_css` saves but does not load on frontend (HTML-widget `<style>` workaround)
+  - Pro FontAwesome icons render empty on Free Elementor (free-alternative table)
+  - Fluent Forms shortcode renders empty if form has 0 fields
+  - LiteSpeed lazy-load rewrites `src=""` runtime — Lighthouse "missing src" red herring
+- **`references/elementor-mcp.md`** — appended 2 entries:
+  - `add-price-table currency_format: ","` required for non-decimal-thousands locales (VND, IDR, big integers)
+  - `show_ribbon: ""` (empty string) required to clear ribbon on cloned price-table cards
+- **`references/seo-checklist.md`** — 3 new sections:
+  - Rank Math `updateMeta` silent fail when meta key is non-Rank-Math-managed (returns `{slug:true}` but meta unchanged)
+  - 1 FAQPage per page principle (multiple `faq_schema=yes` widgets emit invalid Schema)
+  - Eyebrow first-text trap — Rank Math meta-description fallback hijack
+- **`references/wp-abilities.md`** — CPT not exposing REST → `/wp/v2/search?subtype=...` workaround pattern
+- **`references/performance.md`** — LiteSpeed default 7-day TTL fails Lighthouse `uses-long-cache-ttl`; `.htaccess` long-TTL recipe (`max-age=31536000, immutable`)
+- **`references/deployment.md`** — cPanel Fileman/upload_files: `overwrite=1` flag + 5–9 file batch limit per multipart request
+- **`SKILL.md`** — 6 new rows in the task → files-to-load matrix
+- **`README.md`** — refreshed structure: 17 references + 13 workflows + 3 PHP recipes + 2 templates
+
+### Sources — patterns extracted from
+
+- B2B logistics site — image optimization sprint (PNG quantize, srcset variants, LiteSpeed long-TTL)
+- Food retail e-commerce site — accessibility sprint (blended rgba, axe-core aria-level, accordion aria-selected, CF7 honeypot)
+- Event SFX premium B2B site — Fluent Forms styling, UI verification anti-pattern (anchoring + confirmation bias), content_reference.md SoT pattern
+- Inherited B2B site — Element Pack Pro legacy filter, Rank Math updateMeta vs updateRedirection, FAQ Schema consolidation, eyebrow Rank Math hijack, CPT REST workaround, 5-state redesign marking system
+
+[0.3.0]: https://github.com/tranminhmanh/wp-stack-skill/releases/tag/v0.3.0
+
 ## [0.2.1] — 2026-05-10
 
 ### Fixed

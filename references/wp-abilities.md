@@ -173,6 +173,77 @@ jq '.structure[].elType' /tmp/structure.json
 
 `meta.annotations.idempotent: true` → an toàn retry. `false` → cần track request id để tránh duplicate (ví dụ `create-page`).
 
+## CPT không expose REST → `/wp/v2/search` subtype workaround
+
+**Symptom**: một số Custom Post Types (vd `rank_math_locations` từ Rank Math Local SEO, hoặc CPT của plugin tự register) **không expose REST namespace** mặc định:
+
+```bash
+GET /wp-json/wp/v2/locations/4992
+# → 404 "rest_no_route"
+```
+
+→ Không thể read content, update meta, audit programmatically qua WP REST direct.
+
+**Workaround**: dùng generic endpoint `/wp/v2/search` với `subtype` parameter — endpoint này hoạt động cho **mọi** post type registered, kể cả những CPT không có route REST riêng.
+
+```bash
+# Find post_id của bất kỳ post type nào theo keyword
+GET /wp-json/wp/v2/search?search=quan%2011&_fields=id,title,subtype,url
+
+# Response includes ALL matching post types:
+[
+  {"id": 4992, "subtype": "rank_math_locations", "url": ".../q11/...", "title": "..."},
+  {"id": 5012, "subtype": "page",                "url": ".../about/",   "title": "..."}
+]
+```
+
+`subtype` field cho biết post type thực sự — filter sau theo CPT cần.
+
+```python
+import urllib.request, urllib.parse, json
+
+def find_by_keyword(site, keyword, subtype=None, auth_header=None):
+    qs = urllib.parse.urlencode({"search": keyword, "_fields": "id,title,subtype,url", "per_page": 100})
+    url = f"{site}/wp-json/wp/v2/search?{qs}"
+    req = urllib.request.Request(url)
+    if auth_header:
+        req.add_header("Authorization", auth_header)
+    results = json.loads(urllib.request.urlopen(req).read())
+    if subtype:
+        results = [r for r in results if r["subtype"] == subtype]
+    return results
+
+# Usage
+locations = find_by_keyword("https://<site>", "quan", subtype="rank_math_locations")
+# [{"id": 4992, ...}, {"id": 4989, ...}]
+```
+
+**Limitations**:
+- Read-only via search endpoint — finds the post_id but can't update meta directly through `/wp/v2/search`
+- For meta UPDATE on a CPT without REST: use Rank Math `updateMeta` for `rank_math_*` keys (works regardless of CPT REST exposure), OR the one-shot mu-plugin pattern (see [`seo-checklist.md`](seo-checklist.md) "Method 2 mu-plugin"), OR wp-admin GUI for one-off fixes
+- For full CRUD: register the CPT REST exposure via mu-plugin (`register_post_type` filter to set `show_in_rest=true`)
+
+**Why CPT vendors often skip REST exposure**:
+- Privacy / security (don't want public API on internal data)
+- Plugin author oversight (REST registration is opt-in)
+- Backwards compat (REST added in WP 4.7; older plugins may not register)
+
+**Fix path when you control the CPT registration**:
+```php
+// mu-plugin to flip show_in_rest=true on a vendor CPT
+add_action('init', function () {
+    global $wp_post_types;
+    if (isset($wp_post_types['rank_math_locations'])) {
+        $wp_post_types['rank_math_locations']->show_in_rest = true;
+        $wp_post_types['rank_math_locations']->rest_base = 'locations';
+    }
+}, 999);
+```
+
+⚠️ Verify the vendor's CPT design: some CPTs intentionally hide from REST for security reasons. Check the plugin docs before flipping the flag.
+
+**Reusability**: universal for any WP site needing programmatic access to vendor-registered CPTs (Rank Math Local SEO, WooCommerce extensions, custom CRM plugins).
+
 ## Liên quan
 
 - [`mcp-architecture.md`](mcp-architecture.md) — vì sao endpoint MCP server tách biệt khỏi abilities registry

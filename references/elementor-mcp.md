@@ -242,6 +242,44 @@ The schema is not consistent across widgets — always `get-widget-schema` first
 
 **`add-price-list` schema rejected**: a `price_list` array of objects fails validation. Workaround: HTML widget with custom CSS classes `.x-price-table` + `.x-price-row`.
 
+### `add-price-table` `currency_format` — required for non-decimal prices
+
+**Symptom**: setting `price: "8500000"` on a price-table widget renders as `"8"` on the frontend (the rest is silently truncated).
+
+**Root cause**: default `currency_format = "."` makes Elementor parse `8500000` as a decimal — period (`.`) is the delimiter, the value before the first delimiter is `8`. Without an explicit format, big integer prices break.
+
+**Fix**: explicitly set `currency_format: ","` so Elementor treats the value as a plain integer:
+```python
+add-price-table(
+  price="8500000",
+  currency_format=",",          # ← REQUIRED for VND / IDR / large integer currencies
+  currency_symbol_position="after",
+  currency_symbol_custom=" đ"   # space + symbol
+)
+```
+
+Render: `8,500,000 đ`.
+
+Applies to any locale that uses comma as the thousands separator (most non-English locales). For US-style `$8,500.00`, the default `.` format is correct.
+
+### `show_ribbon` carries over from cloned price-table cards
+
+**Symptom**: setting `show_ribbon: "yes"` on one price-table card → after cloning the card 3 times, ALL 3 clones show the ribbon. Only one was supposed to be highlighted.
+
+**Root cause**: `show_ribbon` is a regular setting; clone / duplicate operations carry it over by default. There is no "default empty" — once set on a card, every duplicate inherits it.
+
+**Fix**: explicitly clear it on cards that should NOT have a ribbon:
+```python
+update-widget(
+  widget_id="card-without-ribbon-id",
+  settings={"show_ribbon": ""}   # empty string, NOT False / null / "no"
+)
+```
+
+⚠️ The schema requires `""` (empty string) — `False`, `null`, or `"no"` may render as truthy depending on Elementor version. Verify by re-reading the structure after update.
+
+**Reusability**: same pattern applies to other "presence" settings on Elementor widgets (`show_*`, `_animation`, `_css_classes`) — clone carries the value, explicit empty-string is the way to clear.
+
 ## Container & structure quirks
 
 ### `add-container` cells append at INDEX 0 (FILO)
