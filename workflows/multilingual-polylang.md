@@ -369,11 +369,112 @@ flush_rewrite_rules(true);
 
 ---
 
-## Polylang Free + Rank Math sitemap incomplete — custom `/sitemap-en.xml`
+## Polylang Free + Rank Math sitemap incomplete — 2 real root causes (+ defensive backup)
 
-Polylang Free + Rank Math integration generates `page-sitemap.xml` with only PARTIAL EN URL coverage (sometimes only 12 / 52 pages). Polylang Pro has filters that fix this, Free does not.
+> **Supersedes the Round 4 / v0.2.0 entry** which recommended a custom mu-plugin sitemap as the primary fix. The custom sitemap is still useful as a defensive backup (see end of section), but the root causes are now identified and the custom sitemap is no longer the primary remediation.
 
-### Workaround mu-plugin
+**Symptom**: `page-sitemap.xml` (or `post-sitemap.xml`) from Rank Math contains only a partial set of EN URLs — typically 12 of 52, sometimes 20-30 of 52. VI URLs may be complete. The missing EN URLs cannot be added via wp-admin Rank Math sitemap regenerate / cache clear / transient flush. Polylang Free + Rank Math integration was widely assumed to be incompatible.
+
+### Root cause #1 — `rank_math_canonical_url` mismatch with `get_permalink()` (Polylang timing bug)
+
+Rank Math's sitemap provider intentionally **skips posts where `rank_math_canonical_url` differs from `get_permalink()`**, on the assumption that the canonical points elsewhere (external URL or duplicate page). From `seo-by-rank-math/includes/modules/sitemap/providers/class-post-type.php`:
+
+```php
+$canonical = Helper::get_post_meta( 'canonical_url', $post->ID );
+if ( '' !== $canonical && $canonical !== $url['loc'] ) {
+    return false;  // skip emission to sitemap
+}
+```
+
+This collides with the **Polylang timing pattern** used in build scripts:
+```php
+// In a typical EN-page build script:
+$en_id = wp_insert_post([...]);
+update_post_meta($en_id, 'rank_math_canonical_url', get_permalink($en_id));  // ← captures URL WITHOUT /en/ prefix
+pll_set_post_language($en_id, 'en');                                          // Polylang now claims this as EN
+pll_save_post_translations(['vi' => $vi_id, 'en' => $en_id]);                  // routing link active
+```
+
+At the moment `update_post_meta(...canonical_url, get_permalink())` runs (BEFORE `pll_set_post_language`), `get_permalink()` returns the URL WITHOUT the `/en/` prefix. After Polylang language registration, `get_permalink()` returns WITH `/en/` prefix. The stored canonical (no prefix) and the live permalink (with prefix) **mismatch** → Rank Math sitemap excludes the post.
+
+**Detection script**:
+```php
+foreach ($en_post_ids as $id) {
+    $canonical = get_post_meta($id, 'rank_math_canonical_url', true);
+    $permalink = get_permalink($id);
+    if (rtrim($canonical, '/') !== rtrim($permalink, '/')) {
+        echo "MISMATCH ID {$id}: canonical={$canonical} permalink={$permalink}\n";
+    }
+}
+```
+
+**Fix — defer canonical to a SECOND pass AFTER Polylang routing is active + rewrite flush**:
+```php
+// Pass 1: Create + translate-link posts
+foreach ($pages as $page) {
+    $en_id = wp_insert_post(...);
+    update_post_meta($en_id, '_elementor_data', wp_slash($json));
+    // ... other meta ...
+    pll_set_post_language($en_id, 'en');
+    pll_save_post_translations(['vi' => $page['vi_id'], 'en' => $en_id]);
+}
+
+flush_rewrite_rules(true);  // Polylang routing fully active after this
+
+// Pass 2: NOW set canonical — permalink reflects /en/ prefix correctly
+foreach ($created_en_ids as $en_id) {
+    update_post_meta($en_id, 'rank_math_canonical_url', get_permalink($en_id));
+}
+```
+
+After Pass 2, re-trigger Rank Math sitemap regeneration (next subsection's cache clears).
+
+### Root cause #2 — hidden Rank Math disk cache at `/uploads/rank-math/*.xml`
+
+Even after the canonical fix, the sitemap may STILL return 12 EN URLs. CLI-direct probe (`get_sitemap_links()`) returns 52 EN URLs, but the HTTP `/page-sitemap.xml` returns 12. The disconnect is a third cache layer that most invalidation scripts miss:
+
+**`/wp-content/uploads/rank-math/rank_math_*.xml`** — Rank Math writes generated sitemap XML to this directory on first request, then serves the file directly on subsequent requests. Plugin "Update Sitemap" button + `RankMath\Sitemap\Cache::invalidate_storage()` PHP call + transients clear do NOT touch this directory.
+
+**Fix**:
+```bash
+rm -f /var/www/html/wp-content/uploads/rank-math/*.xml
+```
+
+After deletion, the next HTTP request to `/page-sitemap.xml` regenerates from the live data + your canonical fix → returns all 52 EN URLs.
+
+### Rank Math has 3 cache layers — invalidate all 3
+
+When the Rank Math sitemap is stale, you must clear all three:
+
+```bash
+# 1. Options + transients (DB)
+docker exec wp-db mariadb -u root -p"$PW" wp -e \
+  "DELETE FROM wp_options WHERE option_name LIKE 'rank_math_sitemap%' OR option_name LIKE '_transient_rank_math%';"
+
+# 2. Sitemap-cache directory
+rm -rf /var/www/html/wp-content/uploads/sitemap-cache/*
+
+# 3. Rank Math XML cache  ← MOST EASILY MISSED
+rm -f /var/www/html/wp-content/uploads/rank-math/*.xml
+```
+
+Plus the PHP-level invalidate call if a Rank Math admin script is feasible:
+```php
+if (class_exists('\RankMath\Sitemap\Cache')) {
+    \RankMath\Sitemap\Cache::invalidate_storage();
+}
+```
+
+### Custom `/sitemap-en.xml` mu-plugin — defensive backup (optional)
+
+Despite the canonical + cache fix, the custom `/sitemap-en.xml` mu-plugin from v0.2.0 remains valuable as:
+- **Defensive backup** if Rank Math sitemap regresses on plugin update
+- **EN-only feed** for separate Google Search Console submission
+- **Richer hreflang annotations** (per-URL `xhtml:link rel="alternate" hreflang="vi" href="..."` pairs that Rank Math's default sitemap doesn't emit)
+
+Keep deployed at `wp-content/mu-plugins/site-en-sitemap.php` if you want belt-and-suspenders. Otherwise, with both root causes fixed, the stock Rank Math sitemap handles bilingual sites correctly.
+
+### Workaround mu-plugin (backup — same as v0.2.0)
 
 ```php
 // wp-content/mu-plugins/sitemap-en.php
