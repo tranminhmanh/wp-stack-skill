@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.1] — 2026-05-11
+
+### Fixed
+
+- **CI lychee exclusion** — v0.5.0 attempted to exclude `templates/content-reference-template.md` via `--exclude-path`, but lychee continued to flag 3 `file://` errors in that file. Switched to `--exclude '^file://'` which matches the URL pattern lychee actually emits for relative paths that resolve outside the repo. CI now green.
+- Comment in `.github/workflows/ci.yml` rewritten to explain the design rationale (templates are deployed into user projects; paths like `../../.claude/skills/...` are intentional and resolve at deployment time, not CI time).
+
+[0.5.1]: https://github.com/tranminhmanh/wp-stack-skill/releases/tag/v0.5.1
+
 ## [0.5.0] — 2026-05-11
 
 Round 7 weekly insights distillation — 4 patterns promoted, all from one production debugging session on an inherited B2B site (iOS Safari mobile menu state-desync). One major mental-model addition: multi-factor "cocktail" bug debugging methodology, captured for sites where the bug exists only on one specific stack combination.
