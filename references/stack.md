@@ -111,6 +111,41 @@ When a site already has Astra Pro (legacy license, paid before) AND Elementor Pr
 
 **Recommendation for new sites**: Astra Free + Elementor Pro is enough. The Pro features in Astra duplicate Elementor Pro, so Astra Pro is rarely worth $59+/year on top of Elementor Pro.
 
+## Elementor classic widgets vs atomic widgets — decision matrix
+
+Elementor 4.0+ ships an "atomic mode" with a new generation of widgets (`e-paragraph`, `e-heading`, `e-button`, `e-image`, `div-block`, `flexbox`, …) that have a different data shape from the classic widgets (`heading`, `text-editor`, `button`, `image`, container). Both render fine, but atomic mode changes the underlying `_elementor_data` JSON structure.
+
+The skill's default recommendation is **stick with classic widgets** for most projects. Use atomic only on greenfield sites with no legacy plugins.
+
+| Risk on atomic | Detail |
+|---|---|
+| Schema instability | Atomic API (v3.20+/v4.x) is still evolving. Setting names + nesting shape have changed across minor versions. |
+| Third-party plugin gap | Element Pack Pro, Ultimate Addons for Elementor (UAEL), Essential Addons, Crocoblock JetElements do NOT have atomic-mode equivalents. Using atomic on a site with these plugins means classic + atomic side-by-side and broken interop. |
+| MCP tooling immaturity | The `elementor-mcp-add-atomic-*` family of tools exists (atomic-heading, atomic-button, atomic-paragraph, atomic-image, atomic-video, atomic-svg, atomic-youtube, atomic-divider, div-block, flexbox) but has fewer field validations and less community proof than classic `add-heading` / `add-button` / etc. |
+| One-way migration | Atomic → classic on the same page is hard (no automated converter). Classic → atomic is OK if you really want to switch. Going atomic = commitment. |
+| AI / vibe-coding patterns less documented | Most reference material (this skill, Elementor docs, third-party tutorials) targets classic widgets. AI generation for atomic patterns is less reliable. |
+
+### When to USE atomic widgets
+
+- ✅ Brand-new site, no legacy templates
+- ✅ Pure Elementor stack (no Element Pack / UAEL / Essential Addons / JetEngine widgets needed)
+- ✅ Small / focused project where the team is comfortable with the atomic data shape
+- ✅ You specifically need atomic features (CSS Grid container, advanced flexbox controls, native variable bindings)
+
+### When to AVOID atomic widgets
+
+- ❌ Inherited site with 20+ active plugins (high risk of incompatibility)
+- ❌ Element Pack Pro / UAEL / Essential Addons heavily used
+- ❌ Need third-party widget interop (the third-party widgets are classic; mixing is messy)
+- ❌ Heavy AI / vibe-coding workflow (classic patterns better documented for prompts)
+- ❌ Production site you don't want to be the first to debug atomic-MCP bugs
+
+### Practical rule
+
+Default to classic. Only opt into atomic when you have a concrete reason that classic can't satisfy. If unsure, classic — you can always convert pieces to atomic later, but converting back is painful.
+
+The skill itself documents classic patterns. Atomic-specific patterns (when needed) belong in a project's `CLAUDE.md`, not the skill.
+
 ## CSS architecture: mu-plugin master CSS preferred over Code Snippets
 
 The stack recommends using **a single mu-plugin master CSS file** instead of multiple Code Snippets for production CSS rules:

@@ -84,7 +84,7 @@ wp-stack/
 │   ├── fluent-forms.md               ← Fluent Forms styling + integration
 │   └── pitfalls.md                   ← 40+ pitfalls with detection + fix
 │
-├── workflows/                        ← Step-by-step procedures (13 files)
+├── workflows/                        ← Step-by-step procedures (15 files)
 │   ├── new-site-setup.md             ← Set up a new site A → Z
 │   ├── add-cpt.md                    ← Create a Custom Post Type
 │   ├── theme-builder-loop.md         ← Build a Loop template
@@ -93,11 +93,13 @@ wp-stack/
 │   ├── og-image-generation.md        ← 4-tier OG image coverage strategy
 │   ├── seo-audit.md                  ← 3-tier SEO audit (PHP + Bash + Python)
 │   ├── smtp-relay-setup.md           ← Brevo SMTP relay for budget VPS
-│   ├── multilingual-polylang.md      ← Polylang Free bilingual site (52 vi + 52 en)
+│   ├── multilingual-polylang.md      ← Polylang Free bilingual site
 │   ├── lighthouse-driven-optim.md    ← Image optimization driven by Lighthouse audit
 │   ├── redesign-page.md              ← 5-state KEEP/MOVE/ENHANCE/REPLACE/REMOVE marking
 │   ├── ui-verification.md            ← Verify-don't-assume checklist (counter to bias)
-│   └── content-reference.md          ← Single-source-of-truth pattern for brand facts
+│   ├── content-reference.md          ← Single-source-of-truth pattern for brand facts
+│   ├── design-system-rollout.md      ← Astra + Elementor 3-layer brand rollout
+│   └── comprehensive-audit.md        ← 8-dimension site audit (no Lighthouse needed)
 │
 └── templates/                        ← Reusable assets
     ├── project-claude-md-template.md  ← Template for project CLAUDE.md

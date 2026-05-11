@@ -280,6 +280,25 @@ update-widget(
 
 **Reusability**: same pattern applies to other "presence" settings on Elementor widgets (`show_*`, `_animation`, `_css_classes`) — clone carries the value, explicit empty-string is the way to clear.
 
+### `css_classes` field name — different for widget vs container
+
+The custom-CSS-class field name differs by element type and using the wrong one is a silent save-no-render:
+
+| Element type | Correct field |
+|---|---|
+| **Widget** (heading, button, text-editor, image, …) | `_css_classes` (WITH underscore prefix) |
+| **Container** (Flexbox `e-con`) | `css_classes` (NO underscore) |
+
+```python
+# Widget
+update_widget(post_id=N, widget_id=W, settings={"_css_classes": "my-title"})
+
+# Container
+update_element(post_id=N, element_id=C, settings={"css_classes": "my-card"})
+```
+
+Wrong field for the element type = value persists in `_elementor_data` but no `class="..."` rendered. Schema-confirm via `get-container-schema` / `get-widget-schema` if unsure. Full diagnosis: [`pitfalls.md`](pitfalls.md) "`css_classes` field name — widget vs container difference".
+
 ## Container & structure quirks
 
 ### `add-container` cells append at INDEX 0 (FILO)

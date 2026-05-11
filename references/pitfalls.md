@@ -264,17 +264,50 @@ Applies to: any JS injection from a mu-plugin / code snippet that adds DOM into 
 
 ## CSS Cascade / Specificity pitfalls
 
-### 1. `_css_classes` saves OK in MCP but doesn't always render to the DOM
+### 1. `css_classes` field name — widget vs container difference (silent save-no-render)
 
-MCP `update-container` with `_css_classes: "x-hero-row"` saves correctly in `_elementor_data` but Elementor V4 does NOT always add the class to the DOM. Only the default classes (`elementor-element elementor-element-{ID} e-flex e-con-full`) appear.
+**Corrected understanding** (supersedes v0.1.0 entry "Elementor V4 doesn't always add the class"):
 
-**Workaround**: target via `.elementor-element-{ID}` selector — that class is ALWAYS rendered by Elementor:
+The field name for custom CSS classes is **different by element type**, and using the wrong one results in a silent save (value persists in `_elementor_data`) with NO HTML class rendered:
+
+| Element type | Correct field | Wrong field (silent fail) |
+|---|---|---|
+| **Widget** (heading, button, text-editor, image, …) | `_css_classes` (WITH underscore prefix) | `css_classes` |
+| **Container** (Flexbox `e-con`) | `css_classes` (NO underscore) | `_css_classes` |
+
+**Detection** — fetch the container schema:
+```bash
+mcp elementor-mcp/get-container-schema \
+  | jq '.schema.properties | to_entries[] | select(.key | test("class"; "i"))'
+# Returns: css_classes (no underscore)
+```
+
+For widget, fetch widget schema instead — returns `_css_classes` (with underscore).
+
+**Reproduction**:
+```python
+# ❌ WRONG — silent save-no-render on CONTAINER:
+update_element(post_id=N, element_id="container_id", settings={"_css_classes": "my-card"})
+# Settings save to _elementor_data, BUT rendered HTML has no `class="my-card"`.
+
+# ✅ RIGHT for container:
+update_element(post_id=N, element_id="container_id", settings={"css_classes": "my-card"})
+
+# ✅ RIGHT for widget:
+update_widget(post_id=N, widget_id="heading_id", settings={"_css_classes": "my-title"})
+```
+
+**Why this was confusing pre-v0.4.0**: the original skill entry attributed missing classes to "Elementor V4 quirk — doesn't always add". The actual cause is wrong field name for the element type. Targeting via `.elementor-element-{ID}` selector (the workaround below) still works, but the root fix is to use the correct field name.
+
+**Workaround when you cannot easily change the field name** (legacy code, broken upstream): target via `.elementor-element-{ID}` selector — that class is ALWAYS rendered by Elementor regardless of `css_classes` / `_css_classes` value:
 ```css
 .elementor-element-XXX { max-width: 1280px !important; ... }
 .elementor-element-XXX > .elementor-element-YYY { flex: 1 1 60% !important; ... }
 ```
 
-100% reliable, no debugging class-not-rendering issues.
+Reliable as a fallback. Use it when migrating off the wrong-field-name bug would touch dozens of widgets.
+
+**Pseudo-elements caveat**: when CSS relies on `::before` / `::after` keyed off a custom class (`.my-card::before { content: ... }`), only the correct field name gets the class onto the DOM → only then do the pseudo-elements render. Element-ID selectors can't substitute for that.
 
 ### 2. `custom_css` doesn't override per-element CSS variables
 
@@ -1178,3 +1211,144 @@ If HEAD returns 200 with the right content-length, the image exists. The empty `
 3. For Elementor: re-set the image with the right `image_size` (`thumbnail`, `medium`, `medium_large`, `large`).
 
 **Reusability**: universal for any LiteSpeed Cache + lazy-load site.
+
+## Rank Math `updateSchemas` REST silent fail
+
+**Symptom**: `POST /wp-json/rankmath/v1/updateSchemas` with a complete payload (`objectType + objectID + schemas`) returns `HTTP 200` with response body `[]` (empty array). The schema is NOT saved to post meta. Frontend HTML has no schema block.
+
+**Reproduction**:
+```bash
+curl -u "$U:$APP_PW" -X POST "$SITE/wp-json/rankmath/v1/updateSchemas" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "objectType": "post",
+    "objectID": 3592,
+    "schemas": {
+      "schema-Service-1": {
+        "@type": "Service",
+        "metadata": {"title": "Service", "type": "template", "isPrimary": false},
+        "name": "..."
+      }
+    }
+  }'
+# → HTTP 200, body=[]
+# → frontend has no <script type="application/ld+json"> for this post
+```
+
+**Root cause** (hypothesis): endpoint expects a different schema-payload shape — possibly `schemas['<template_id>']` with a registered template ID rather than an arbitrary key, or a nested `schema_data` wrapper. Public docs are silent. Belongs to the same silent-fail family as `updateRedirection` (returns 200 OK with `id: ""`) — both are admin AJAX endpoints that don't fully honor App Password context.
+
+**Fix — bypass Rank Math, inject JSON-LD directly via Elementor HTML widget**:
+
+See [`seo-checklist.md`](seo-checklist.md) "Inject Schema markup into `_elementor_data` via PHP" — the existing pattern works. Add a container with an HTML widget at the bottom of the page, content is `<script type="application/ld+json">...</script>`. The schema renders in the DOM (Google crawls it). Hide visually with `.x-schema-only { display: none }`.
+
+For multi-entity sites, also see [`seo-checklist.md`](seo-checklist.md) "Schema graph `@id` linking" — link entities via `@id` URL fragments instead of duplicating Organization data on every page.
+
+**Family of Rank Math REST silent fails** — same pattern, same workaround approach:
+- `updateRedirection` → see "Rank Math `updateRedirection` REST silent fail" above
+- `updateSchemas` → this entry
+- `updateSettings` → returns 403 (admin GUI session required) — different failure, also bypass via PHP
+
+**Reusability**: universal for any Rank Math site (free or Pro).
+
+## LiteSpeed CCSS staleness — REST cannot invalidate (10 endpoints tried)
+
+**Symptom**: after deactivating WPForms (or any plugin that contributes inline CSS variables), the inactive plugin's CSS still appears in `<style id="litespeed-ccss">` block — sometimes for weeks. LiteSpeed Critical CSS (CCSS) is a pre-generated snapshot that does not refresh when the underlying plugin source changes.
+
+**Endpoints tried, all return `HTTP 200` but silent-fail to actually invalidate CCSS**:
+
+```
+LSCWP_CTRL=PURGEALL              → 200 OK, CCSS unchanged
+LSCWP_CTRL=CCSS_CLEAR            → 200 OK, CCSS unchanged
+LSCWP_CTRL=CCSS_DELETE_QUEUE     → 200 OK, queue not invalidated
+LSCWP_CTRL=PURGE_CSSJS           → 200 OK, only combined CSS cleared
+LSCWP_CTRL=GENERATE_CCSS         → 200 OK, no regen trigger
+LSCWP_CTRL=KILL_CCSS             → 200 OK, no-op
+update-page-settings (empty)     → save_post fires, CCSS unchanged
+update-element with new CSS class → save_post fires, CCSS unchanged
+add-html widget                  → save_post fires, CCSS unchanged
+wp-cron.php trigger              → 200 OK, queue not processed
+```
+
+**Root cause**: LiteSpeed's CCSS regen pipeline checks for admin GUI context (cookie + nonce). WordPress Application Password (Basic auth) bypasses cookies → CCSS endpoints return success but the queue worker only runs under admin session, so nothing happens.
+
+This is the same pattern family as Rank Math `updateRedirection` / `updateSchemas` silent-fail — admin AJAX endpoints exposed via REST namespace that don't fully honor non-cookie auth contexts.
+
+**4 workarounds** (pick the one available):
+
+1. **wp-admin GUI** (cookie auth): `wp-admin → LiteSpeed Cache → Toolbox → Purge → "Purge Critical CSS"`. Works because the request carries the admin session cookie.
+
+2. **Delete CCSS files directly** via cPanel File Manager / SSH:
+   ```bash
+   rm -f /wp-content/litespeed/ccss/*.css
+   ```
+   LiteSpeed regenerates on next page request.
+
+3. **Mass page edit triggers natural regen** — when you redesign a page heavily enough that the rendered CSS changes substantially, LiteSpeed marks the page's CCSS stale and regenerates on next visit. Confirmed working when a page is fully rebuilt via MCP.
+
+4. **Disable + re-enable CCSS feature** in wp-admin → LiteSpeed → Cache → CSS Settings → "Generate Critical CSS" toggle off → save → toggle on → save. Triggers full CCSS regen across the site.
+
+**Related observation — frozen plugin CSS vars in CCSS even after deactivation**: when CCSS was generated while a plugin was active, the plugin's CSS variables (e.g. `:root { --wpforms-field-* }`) get baked into the CCSS block. Deactivating / uninstalling the plugin removes the source CSS, but CCSS retains the frozen variables. Cosmetic-only (selectors don't match → no rendered effect), but ~3KB of dead bytes per page until CCSS regen.
+
+**Reusability**: universal for any LiteSpeed Cache user.
+
+## Astra `font_weight` clamped to ≤ 700 (silently ignores 800/900)
+
+**Symptom**: `astra-update-font-heading` with `font_weight=800` returns `font_weight: 700` in response. UI confirms 700. CSS computed style shows 700.
+
+**Root cause**: Astra's font-weight dropdown in the Customizer UI only offers values up to 700. The MCP write goes through the same schema → values 800/900 are silently clamped.
+
+**3 workarounds**:
+1. **Use 700 for Astra base** — acceptable for most headings.
+2. **Override per-element in Elementor** — Elementor heading widget's `typography_font_weight` accepts 800/900 directly (no clamp).
+3. **Inject CSS in kit `custom_css`**:
+   ```css
+   h1, h2, h3 { font-weight: 800 !important; }
+   ```
+   Survives Astra clamp, applies site-wide.
+
+**Reusability**: stack-specific for Astra theme (any version).
+
+## Element Pack Pro `display_condition_list: subscriber` — site-wide infection at scale
+
+**EXTENDS the existing "Element Pack Pro legacy `display_condition_list: subscriber`" entry above**. New observation: infection is not 1-or-2-widget — it is **site-wide at hundreds of widgets** on real inherited sites.
+
+**Real observation**: one home page had **88 widgets** with the legacy filter; one contact page had **63 widgets**. Total 151+ widgets in just two pages. Element Pack-built templates inject the filter as a default into widget creation flow — every widget added via Element Pack interface carries the setting.
+
+**Behavior beyond the original "halt rendering"**:
+- Original observation: container with subscriber filter is hidden for anonymous → siblings AFTER it also hidden.
+- New observation: on newer Element Pack versions, widgets render OK but the filter is still set in `_elementor_data` settings, polluting bulk audits + brand updates (filter-related styles may still apply, default greyed-out states leak through).
+
+**Detection** — recursive scan with marker:
+```python
+def scan_subscriber_filter(elements, results):
+    for el in elements:
+        dcl = el.get('settings', {}).get('display_condition_list', [])
+        if any(c.get('display_condition_login_status') == 'subscriber'
+               for c in dcl if isinstance(c, dict)):
+            results.append(el['id'])
+        if 'elements' in el:
+            scan_subscriber_filter(el['elements'], results)
+```
+
+**Bulk-fix via `batch_update`** — single MCP call clears N widgets:
+```python
+operations = [
+    {'element_id': eid, 'settings': {'display_condition_list': []}}
+    for eid in subscriber_filtered_ids
+]
+batch_update(post_id=N, operations=operations)
+# 88 widgets cleared in one call, far faster than 88 sequential update-element calls
+```
+
+Then verify:
+```bash
+curl -u "$U:$APP_PW" "$SITE/wp-json/wp/v2/pages/N?context=edit" \
+  | jq '.meta._elementor_data' \
+  | jq -r '..|.display_condition_list? // empty' \
+  | grep -c subscriber
+# Expect: 0
+```
+
+**Cross-reference**: this audit-sweep step belongs in the design-system-rollout workflow — see [`workflows/design-system-rollout.md`](../workflows/design-system-rollout.md) "Phase 3 — Layer 3: Widget audit + bulk fix" Step 3e.
+
+**Reusability**: critical for any site running Element Pack Pro at scale.

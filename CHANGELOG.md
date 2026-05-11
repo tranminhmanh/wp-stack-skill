@@ -18,6 +18,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 [0.2.2]: https://github.com/tranminhmanh/wp-stack-skill/releases/tag/v0.2.2
 
+## [0.4.0] — 2026-05-11
+
+Round 6 weekly insights distillation — 13 patterns promoted, including 2 corrections to v0.1.0/v0.2.0 entries that were incomplete or wrong about the root cause.
+
+### Added — 2 new workflow files
+
+- **`workflows/design-system-rollout.md`** — bundles 5 related patterns into one workflow: 3-layer architecture (Astra → Elementor kit → custom CSS), 9-step apply sequence, cascade-priority rules (Astra → Elementor → widget), widget-hardcode audit via JSON-walk, bulk batch-update fix, plus Element Pack subscriber-filter sweep step. Real timing: ~130 min for an inherited site, ~55 min for greenfield.
+- **`workflows/comprehensive-audit.md`** — 8-dimension site audit using only curl + regex + Python stdlib (no Lighthouse / PSI API quota needed). Covers SEO, performance, security, plugin usage, schema, accessibility (static), DB/robots, redirects. Output JSON ships to `data:build-dashboard` for interactive HTML.
+
+### Changed
+
+- **`references/wp-abilities.md`** — appended 2 sections:
+  - Extract auth credentials from `~/.claude.json` MCP server config (base64-decode `Authorization: Basic` for direct REST) + security caveats (`chmod 600`, no public sync, rotation discipline)
+  - WP REST endpoint paths use plural `rest_base` (not singular `post_type`), discoverable via `/wp/v2/types`. Hyphen-vs-underscore gotcha for vendor CPTs (e.g. `rank-math-locations` REST vs `rank_math_locations` post_type)
+- **`references/seo-checklist.md`** — appended 2 sections:
+  - Robots.txt physical file at docroot overrides WP virtual + Rank Math hooks (Apache serves before PHP). Detection signals (last-modified header, accept-ranges) + 3 fix paths + audit checklist
+  - Schema graph `@id` linking best practice — link entities via `@id` URL fragments instead of duplicating Organization data on every page. Naming convention + pattern across CollectionPage / Service / Person / WebPage
+- **`references/pitfalls.md`** — appended 4 new pitfalls + 1 correction:
+  - Rank Math `updateSchemas` REST silent fail (HTTP 200, body=`[]`, schema NOT saved). Same family as `updateRedirection`. Workaround: HTML widget JSON-LD injection
+  - LiteSpeed CCSS staleness — 10 REST endpoints tried, all return 200 silent. CCSS frozen with old plugin CSS even after deactivation. 4 workarounds (wp-admin GUI, manual file delete, mass page edit, disable/re-enable feature)
+  - Astra `font_weight` clamped ≤ 700 (silently ignores 800/900). 3 workarounds
+  - **Element Pack Pro `display_condition_list: subscriber` site-wide infection at scale** (extends v0.3.0 entry) — real observation 88+63=151 widgets across 2 pages. Bulk-fix via `batch_update`
+  - **CORRECTION**: v0.1.0 entry "Elementor V4 doesn't always add `_css_classes` to DOM" was wrong root cause. Real cause: widget uses `_css_classes` (WITH underscore); container uses `css_classes` (NO underscore). Wrong field name = silent save-no-render. Original `.elementor-element-{ID}` selector workaround remains valid as a fallback
+- **`references/elementor-mcp.md`** — added "`css_classes` field name — different for widget vs container" entry cross-referencing the corrected pitfall
+- **`references/stack.md`** — added "Elementor classic widgets vs atomic widgets — decision matrix" entry. Default recommendation: classic. Use atomic only on greenfield, pure-Elementor sites
+- **`workflows/multilingual-polylang.md`** — **MAJOR REVISION**: replaced the "Polylang Free + Rank Math sitemap incomplete — custom `/sitemap-en.xml` workaround" section with the 2 REAL root causes discovered: (1) `rank_math_canonical_url` mismatch with `get_permalink()` due to Polylang timing — must defer canonical to a Pass 2 after `pll_set_post_language` + `flush_rewrite_rules`. (2) Hidden disk cache at `/uploads/rank-math/*.xml` — 3rd cache layer most invalidation scripts miss. Custom mu-plugin sitemap demoted to "defensive backup, optional"
+- **`SKILL.md`** — 2 new rows in task → files-to-load matrix
+- **`README.md`** — 15 workflows (was 13), refreshed structure
+
+### Sources — patterns extracted from
+
+- **Inherited B2B site** (Astra Pro + Elementor 4.x + 24 plugins) — brand application 9-step sequence, cascade priority discovery, widget hardcode audit pattern, Element Pack subscriber-filter site-wide infection, LiteSpeed CCSS REST silent fail, Rank Math `updateSchemas` silent fail, robots.txt physical override, comprehensive 8-dim audit framework, REST plural rest_base, auth from `~/.claude.json`, Schema `@id` graph linking, Astra font_weight clamp, `_css_classes` vs `css_classes` field correction, atomic widgets decision matrix
+- **B2B logistics site** (Polylang Free + Rank Math) — Rank Math sitemap deep-debug uncovering 2 real root causes (canonical timing + disk cache)
+
+[0.4.0]: https://github.com/tranminhmanh/wp-stack-skill/releases/tag/v0.4.0
+
 ## [0.3.0] — 2026-05-10
 
 Round 5 weekly insights distillation — 4 production sites this week (B2B logistics, food retail, event SFX, inherited B2B clinic), ~6,100 lines of `insights.md` parsed, 22 patterns promoted.

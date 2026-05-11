@@ -83,6 +83,8 @@ Summary:
 | Redesign a live page (preserve content) | `workflows/redesign-page.md` |
 | Verify visual layout claims (counter to bias) | `workflows/ui-verification.md` |
 | Brand-fact consistency across pages | `workflows/content-reference.md` + `templates/content-reference-template.md` |
+| Apply a design system to Astra + Elementor | `workflows/design-system-rollout.md` + `astra-customizer` + `elementor-mcp` |
+| Comprehensive site audit (no Lighthouse needed) | `workflows/comprehensive-audit.md` |
 
 ## Anti-patterns — STRICTLY avoid
 

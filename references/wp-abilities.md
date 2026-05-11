@@ -244,6 +244,97 @@ add_action('init', function () {
 
 **Reusability**: universal for any WP site needing programmatic access to vendor-registered CPTs (Rank Math Local SEO, WooCommerce extensions, custom CRM plugins).
 
+## Extract auth credentials from `~/.claude.json` MCP server config
+
+When the user has already wired up the site's MCP connector via `claude mcp add`, the Application Password is stored in `~/.claude.json` under the connector's `headers.Authorization` as `Basic <base64>`. You can decode this to get the user/password pair for direct REST calls — no need to ask the user to re-share credentials.
+
+```python
+import json, base64, os
+
+config_path = os.path.expanduser('~/.claude.json')
+with open(config_path) as f:
+    config = json.load(f)
+
+# MCP servers can live at top-level "mcpServers" or under project-scoped keys.
+# Check both shapes.
+servers = config.get('mcpServers', {})
+
+# Find the relevant connector — name varies per site
+target = next((name for name in servers if 'example' in name and 'elementor' in name), None)
+if target:
+    auth_header = servers[target]['headers']['Authorization']
+    # auth_header = "Basic bWFpdGhhbmg6M0xoMC..."
+    encoded = auth_header.split(' ', 1)[1]
+    decoded = base64.b64decode(encoded).decode('utf-8')
+    user, pw = decoded.split(':', 1)
+    # user, pw now usable for direct REST calls
+```
+
+**Security caveats**:
+- `~/.claude.json` is plain-text on disk. Any process running as your user can read it.
+- Make sure `chmod 600 ~/.claude.json` so only the owner reads it.
+- Do NOT sync `~/.claude.json` to a public cloud / git repo / shared drive.
+- The Application Password is rotation-able from `wp-admin → Profile → Application Passwords` — revoke any password that may have leaked.
+
+**When to use this pattern**:
+- You're scripting direct REST calls and the MCP bridge is already configured
+- The user previously shared the App Password during `claude mcp add` setup — re-using it avoids asking again
+- A CI runner needs the same credentials but `claude mcp add` is the source of truth
+
+**When NOT to use this pattern**:
+- Cross-user / cross-machine scripts (the file is local to one user/machine)
+- Sharing the script with someone else (they don't have your `~/.claude.json`)
+- Long-running cron — App Passwords get rotated; prefer env-var-driven config that you control
+
+**Reusability**: universal for any user who has already configured MCP for a WP site via `claude mcp add`.
+
+## WP REST endpoint paths use plural `rest_base`, NOT singular `post_type`
+
+When calling `/wp/v2/{type}` endpoints, the URL path is the **plural `rest_base`** of the post type, not the singular `post_type` slug. For most built-in types it's just `s`-pluralized (`post` → `posts`, `page` → `pages`), but CPTs can have custom `rest_base` that differs substantially.
+
+```bash
+# ❌ WRONG — singular post_type name
+curl "$SITE/wp-json/wp/v2/post?slug=hello-world"
+# → returns empty [] (NOT 404!) because no such endpoint exists
+
+# ✅ RIGHT — plural rest_base
+curl "$SITE/wp-json/wp/v2/posts?slug=hello-world"
+# → returns matching posts
+```
+
+**Discover `rest_base` for every type on the site**:
+```bash
+curl -u "$U:$APP_PW" "$SITE/wp-json/wp/v2/types" \
+  | jq 'to_entries[] | {type: .key, rest_base: .value.rest_base, rest_namespace: .value.rest_namespace}'
+```
+
+Sample output:
+```json
+{"type": "post",                  "rest_base": "posts",                 "rest_namespace": "wp/v2"}
+{"type": "page",                  "rest_base": "pages",                 "rest_namespace": "wp/v2"}
+{"type": "product",               "rest_base": "products",              "rest_namespace": "wc/v3"}
+{"type": "rank_math_locations",   "rest_base": "rank-math-locations",   "rest_namespace": "wp/v2"}
+                                                  ↑ hyphen-separated, NOT underscore
+```
+
+⚠️ **CPT gotcha**: vendor CPTs often use a **hyphen-separated `rest_base`** even when the `post_type` slug uses underscores. `rank_math_locations` (post_type) → `rank-math-locations` (rest_base). Always check `/wp/v2/types` first.
+
+**Helper script** to build the correct URL:
+```python
+import json, urllib.request
+
+def get_rest_base(site, post_type, auth_header=None):
+    req = urllib.request.Request(f"{site}/wp-json/wp/v2/types")
+    if auth_header: req.add_header("Authorization", auth_header)
+    types = json.loads(urllib.request.urlopen(req).read())
+    return types[post_type]['rest_base']
+
+base = get_rest_base("https://example.com", "rank_math_locations")
+url = f"https://example.com/wp-json/wp/v2/{base}?slug=my-location"
+```
+
+**Reusability**: universal for ALL WP REST API consumers.
+
 ## Liên quan
 
 - [`mcp-architecture.md`](mcp-architecture.md) — vì sao endpoint MCP server tách biệt khỏi abilities registry
