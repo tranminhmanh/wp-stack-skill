@@ -65,13 +65,14 @@ wp-stack/
 ├── SKILL.md                          ← Entry point (Claude reads first)
 ├── README.md                         ← This file
 │
-├── references/                       ← Knowledge base (17 files)
+├── references/                       ← Knowledge base (18 files)
 │   ├── stack.md                      ← Standard stack and versions
 │   ├── design-tokens.md              ← Spacing / typography / shadows
 │   ├── elementor-mcp.md              ← MCP cheatsheet + widget gotchas
 │   ├── widget-mapping.md             ← HTML element → Elementor widget
 │   ├── responsive.md                 ← Breakpoint rules + container budgets
-│   ├── astra-customizer.md           ← Astra theme settings
+│   ├── astra-customizer.md           ← Astra theme settings + MCP coverage gaps
+│   ├── astra-mobile-menu.md          ← 3-mode comparison + iOS bfcache fix + 6-layer defense
 │   ├── seo-checklist.md              ← Rank Math + Schema + OG image
 │   ├── performance.md                ← Speed optimization + cache invalidation
 │   ├── security.md                   ← Hardening checklist
@@ -84,7 +85,7 @@ wp-stack/
 │   ├── fluent-forms.md               ← Fluent Forms styling + integration
 │   └── pitfalls.md                   ← 40+ pitfalls with detection + fix
 │
-├── workflows/                        ← Step-by-step procedures (15 files)
+├── workflows/                        ← Step-by-step procedures (16 files)
 │   ├── new-site-setup.md             ← Set up a new site A → Z
 │   ├── add-cpt.md                    ← Create a Custom Post Type
 │   ├── theme-builder-loop.md         ← Build a Loop template
@@ -99,7 +100,8 @@ wp-stack/
 │   ├── ui-verification.md            ← Verify-don't-assume checklist (counter to bias)
 │   ├── content-reference.md          ← Single-source-of-truth pattern for brand facts
 │   ├── design-system-rollout.md      ← Astra + Elementor 3-layer brand rollout
-│   └── comprehensive-audit.md        ← 8-dimension site audit (no Lighthouse needed)
+│   ├── comprehensive-audit.md        ← 8-dimension site audit (no Lighthouse needed)
+│   └── multi-factor-bug-debug.md     ← "Bug only on one site" cocktail debug methodology
 │
 └── templates/                        ← Reusable assets
     ├── project-claude-md-template.md  ← Template for project CLAUDE.md

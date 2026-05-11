@@ -495,6 +495,73 @@ GET /wp-json/wp-abilities/v1/abilities
 
 → Lists all loaded abilities + their schemas. When the MCP client tool returns `-32603: Failed to get ability details: 404`, fall back to direct REST calls via the endpoint above.
 
+## Elementor Pro Custom Code Snippets — built-in CPT for site-wide JS / CSS / HTML
+
+Elementor Pro ships a built-in **Custom Code** feature (CPT `elementor_snippet`) that injects site-wide JS / CSS / HTML without needing a separate plugin (no Code Snippets plugin, no `functions.php` edit, no mu-plugin file). Useful for:
+- Mobile menu fix snippets (see [`astra-mobile-menu.md`](astra-mobile-menu.md))
+- 3rd-party analytics tags (GA4, Tag Manager, Hotjar, Microsoft Clarity)
+- A11y JS patches (see [`a11y-debugging.md`](a11y-debugging.md))
+- Brand-specific CSS overrides that don't fit in the kit `custom_css`
+
+⚠️ This only handles JS / CSS / HTML — **no PHP**. For PHP snippets you still need the Code Snippets plugin or a mu-plugin file.
+
+### Access via wp-admin
+
+`wp-admin → Templates → Custom Code → Add New Custom Code`
+
+### Snippet settings
+
+| Setting | Values | Note |
+|---|---|---|
+| **Location** | `<head>` / `Body - Start` / `Body - End` / `wp_footer` | Determines where the snippet is injected. Default `<head>` for most JS/CSS. Use `Body - End` for scripts that need DOM ready without a `DOMContentLoaded` wrapper. |
+| **Priority** | 1–999 (default 10) | Lower = earlier. Multiple snippets at the same location are output by priority order. Set 5 for "before everything else", 100 for "after everything else". |
+| **Frequency** | Every Page / Every Page Once | "Once" loads the snippet once per session (good for trackers). "Every Page" re-injects on every load (good for fixes that re-init). |
+| **Conditions** | Include / Exclude rules per page / template / language | Same condition system as Elementor Theme Builder. Apply globally with "Include: Entire Site". |
+
+### Manage via MCP
+
+Elementor MCP exposes the snippet CPT with tools (versions vary by plugin release):
+- `list_code_snippets()` — enumerate all snippets with id, title, status, location, priority
+- `add_code_snippet(...)` — create a new snippet with the same settings as the wp-admin form
+- (Some MCP server versions also support `update_code_snippet` and `delete_code_snippet`. Check `list_widgets` / tool inventory on your site.)
+
+### Direct REST fallback (when MCP tool unavailable)
+
+```bash
+# List snippets
+curl -u "$U:$APP_PW" \
+  "$SITE/wp-json/wp/v2/elementor_snippet?per_page=50&_fields=id,title,status,meta"
+
+# Create a snippet (CPT REST allowed because elementor_snippet has show_in_rest=true)
+curl -u "$U:$APP_PW" -X POST "$SITE/wp-json/wp/v2/elementor_snippet" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "Mobile menu iOS bfcache fix",
+    "status": "publish",
+    "content": "<script>/* JS here */</script>",
+    "meta": {
+      "_elementor_snippet_location": "wp_footer",
+      "_elementor_snippet_priority": 5,
+      "_elementor_snippet_frequency": "every_page"
+    }
+  }'
+```
+
+### When to use Custom Code Snippet vs alternatives
+
+| Tool | When |
+|---|---|
+| **`elementor_snippet`** (Elementor Pro built-in) | JS / CSS / HTML site-wide, no separate plugin, condition-based scope |
+| **Kit `custom_css`** (via `update-page-settings` on kit post) | Site-wide CSS only, applies to Elementor-rendered pages |
+| **Code Snippets plugin** | PHP snippets (Elementor's `elementor_snippet` does NOT support PHP) |
+| **mu-plugin file** | Always-on PHP, can't be deactivated via wp-admin |
+
+### Pitfalls
+
+- ⚠️ Default frequency is **"Every Page"** — heavy snippets at high traffic re-execute on every load. For analytics / tracking, switch to "Once".
+- ⚠️ Conditions inherit from Elementor Theme Builder's UI — be aware of the same display-condition gotchas (see [`pitfalls.md`](pitfalls.md) "Element Pack Pro legacy `display_condition_list: subscriber`").
+- ⚠️ Multiple snippets at the same location + same priority → execution order is non-deterministic. Use distinct priorities to guarantee order.
+
 ## WP Admin upload (`async-upload.php`) vs REST `/wp/v2/media`
 
 The two upload endpoints take **different code paths**:

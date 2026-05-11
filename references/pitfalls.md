@@ -1152,7 +1152,7 @@ Verified to work for: section padding rhythm, card aspect-ratio constraints, for
 | `house` | `home` |
 | `bars-staggered` | `align-justify` |
 
-**Verify before picking**: search [fontawesome.com/v5/free](https://fontawesome.com/v5/free) — anything not listed is Pro-only. The skill stack is Elementor Free / Pro **without** FA Pro license, so always pick from Free icon set.
+**Verify before picking**: search [fontawesome.com/search?o=r&m=free](https://fontawesome.com/search?o=r&m=free) — anything not listed is Pro-only. The skill stack is Elementor Free / Pro **without** FA Pro license, so always pick from Free icon set.
 
 **Alternative for missing-but-needed glyphs**: emoji directly in widget text (`📅 ⚓ ⚡ 💎`) renders 100% reliably across browsers, no font dependency. See [`elementor-mcp.md`](elementor-mcp.md) "Counter icon" entry.
 
