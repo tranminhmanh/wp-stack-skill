@@ -5,18 +5,46 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.2.2] — 2026-05-10
+## [0.5.0] — 2026-05-11
+
+Round 7 weekly insights distillation — 4 patterns promoted, all from one production debugging session on an inherited B2B site (iOS Safari mobile menu state-desync). One major mental-model addition: multi-factor "cocktail" bug debugging methodology, captured for sites where the bug exists only on one specific stack combination.
+
+### Added — 1 new reference + 1 new workflow
+
+- **`references/astra-mobile-menu.md`** — complete Astra mobile menu debug reference bundling 3 related insights:
+  - Mode comparison (`dropdown` / `off-canvas` / `fullscreen`) — different DOM, body class names, JS click handlers per mode. Cross-mode fixes silently fail. Detection step + comparison table.
+  - iOS Safari bfcache state-desync bug — `pageshow` handler fix + reason it doesn't reproduce on every Astra site.
+  - 6-layer defense architecture (production-tested v5): CSS transitions + stagger animation + JS class manager + capture-phase fallback + `pageshow` reset + width-reload safety net.
+  - Iterative debug journey v1 → v5 with lessons per version.
+  - Cross-references to `astra-customizer.md` (MCP coverage gaps), `elementor-mcp.md` (Custom Code Snippets for deployment), `workflows/multi-factor-bug-debug.md` (methodology).
+
+- **`workflows/multi-factor-bug-debug.md`** — methodology for "bug only on one site" cases. Inverts the standard single-root-cause assumption. 6-step process: confirm site-specific → enumerate stack factors → identify candidate factor set → state-desync mental model → iterative add-layer fix → document the cocktail for future. Includes the v1 → v5 iteration log from the Astra mobile menu case as a concrete example.
 
 ### Changed
 
-- **`references/seo-checklist.md`** — corrected misleading section "Rank Math meta NOT exposed via REST". Battle-tested on a Rank Math Pro v3.0.84 site (85 posts, 8s, 0 errors): the `/wp-json/rankmath/v1/updateMeta` endpoint IS viable via App Password Basic auth for per-post bulk meta update (`rank_math_title`, `rank_math_description`, `rank_math_focus_keyword`, `rank_math_canonical_url`). The mu-plugin one-shot pattern is now LEGACY fallback for non-Rank-Math meta or older Rank Math versions only. Added Python parallel helper template (6 workers, parallel-safe across different post IDs).
+- **`references/elementor-mcp.md`** — added "Elementor Pro Custom Code Snippets" section. Documents the built-in CPT `elementor_snippet` for site-wide JS / CSS / HTML injection — no separate plugin, no `functions.php` edit, no mu-plugin file. 4 location hooks (`<head>`, `Body - Start`, `Body - End`, `wp_footer`), priority + frequency settings, MCP + REST tool reference, decision matrix vs Code Snippets plugin / kit `custom_css` / mu-plugin.
 
-### Discovered — pending CANDIDATE promotion (need second-project verification)
+- **`references/astra-customizer.md`** — added "Astra MCP coverage gaps" section. Documents that settings stored in `theme_mod('astra-settings')` serialized array (e.g. `mobile-menu-style`, body typography overrides) are NOT exposed via Astra MCP tools. 4 workaround paths (wp-admin Customizer manual, PHP `set_theme_mod` snippet, WP-CLI, custom REST endpoint plugin). PHP recipe included.
 
-- **Astra `site-post-title=disabled` per-post meta toggle** as the safe fix for H1 duplicate when an inline content H1 coexists with the Astra entry-title H1. Verified on 81 posts: H1 count 2 → 1, zero false positives. Anti-pattern caution: do NOT apply on posts whose only H1 is the Astra entry-title — would result in 0 H1.
-- **Rank Math `/v1/updateRedirection` REST endpoint quirk** — endpoint returns HTTP 200 with `{"id":""}` and message "redirect created", but the rule does NOT actually trigger on the frontend. Likely an admin-AJAX endpoint requiring nonce/cookie session, not viable for App Password automation. Workaround: manual GUI redirect, or alternative redirect plugin (`Redirection` by John Godley).
+- **`SKILL.md`** — 2 new rows in task → files-to-load matrix.
+- **`README.md`** — 18 references (was 17) + 16 workflows (was 15).
 
-[0.2.2]: https://github.com/tranminhmanh/wp-stack-skill/releases/tag/v0.2.2
+### Fixed — CI link-check was failing since v0.2.0
+
+The `Markdown link check` job (lychee) has been failing on every release since v0.2.0. 6 errors traced + fixed in this release:
+
+- **Orphan `## [0.2.2]` section in CHANGELOG.md** — referenced a release that was never tagged → 404 on the link. Section removed (its content was already incorporated into v0.3.0+).
+- **`fontawesome.com/v5/free`** in `pitfalls.md` → 404. FontAwesome restructured to `fontawesome.com/search?o=r&m=free`. Link updated.
+- **`linkedin.com`** in `README.md` Author section → HTTP 999 (LinkedIn returns 999 to all bots / link checkers — universal anti-scrape). Added to lychee `--exclude` list.
+- **3 relative paths in `templates/content-reference-template.md`** — paths like `../../.claude/skills/wp-stack/...` are intended to resolve from the user's project location, not from the skill repo root. Added `--exclude-path` for the template file (templates are deployment-time, not link-check-time).
+
+CI workflow `.github/workflows/ci.yml` updated with documented `--exclude` rules so future contributors know which exclusions are intentional.
+
+### Sources — patterns extracted from
+
+- **Inherited B2B site mobile-menu debug session** — 5 hours iOS Safari debug, v1 → v5 iteration, 5-factor stack cocktail identification, Elementor Custom Code Snippet deployment, Astra Customizer manual mode switch.
+
+[0.5.0]: https://github.com/tranminhmanh/wp-stack-skill/releases/tag/v0.5.0
 
 ## [0.4.0] — 2026-05-11
 

@@ -68,6 +68,45 @@ Setup: Plugins → Astra → MCP tab → Generate config.
 
 ⚠️ Astra MCP **cannot build landing-page sections** — it only adjusts global theme settings. Page content still uses msrbuilds/elementor-mcp.
 
+### Astra MCP coverage gaps — `theme_mod('astra-settings')` serialized array
+
+Astra MCP exposes ~50+ dedicated functions (palette, theme color, fonts, headers, footers, breadcrumbs, …) but **does NOT expose settings stored inside the `theme_mod('astra-settings')` serialized array**. Those settings have no dedicated MCP tool — they only have UI controls in the Customizer.
+
+Examples of NOT-exposed settings:
+- `mobile-menu-style` (dropdown / off-canvas / fullscreen — critical for mobile menu debugging — see [`astra-mobile-menu.md`](astra-mobile-menu.md))
+- `body-typography_*` overrides (per-element typography variants)
+- Many `theme_mod` flags stored in the serialized array rather than as standalone options
+
+**Why this gap exists**: Astra MCP tool generation only covers settings that have dedicated UI controls + dedicated option keys. Settings stored as nested keys inside a single serialized `astra-settings` option are not auto-exposed via REST.
+
+**4 workaround paths** when you need to toggle an unsupported setting programmatically:
+
+| Path | When to use | Cost |
+|---|---|---|
+| **A. wp-admin Customizer (manual)** | One-off setting change | ~5 min, requires browser session |
+| **B. PHP snippet to `set_theme_mod()`** | Repeatable + scripted | Needs Code Snippets plugin or `mu-plugin` access (Elementor's `elementor_snippet` CPT supports CSS/JS but not PHP) |
+| **C. WP-CLI `wp option update`** | CI / one-time scripted | Requires SSH access |
+| **D. Custom REST endpoint plugin** | Many gaps to fill on one site | Overhead rarely worth it for ad-hoc gaps |
+
+**PHP `set_theme_mod` recipe** (path B — most reusable):
+```php
+// Get current serialized array
+$astra = get_theme_mod('astra-settings', []);
+
+// Set the gap
+$astra['mobile-menu-style'] = 'flyout';   // dropdown | off-canvas | flyout | fullscreen
+
+// Write back
+set_theme_mod('astra-settings', $astra);
+
+// Invalidate Astra's runtime cache
+delete_transient('astra_theme_dynamic_css_cached');
+```
+
+⚠️ This bypasses any Astra-side validation. Verify the value against Astra's source code (look in `astra/inc/customizer/*.php` for valid enum) before setting.
+
+**Tracking the gap list**: as you hit a setting Astra MCP cannot reach, note it in the project's `CLAUDE.md` so the next session knows to use the workaround. Settings that appear in multiple projects could become candidates for a future Astra MCP enhancement (or a custom MCP server).
+
 ## Common Astra pitfalls
 
 ### Mobile breakpoint too early (921px)

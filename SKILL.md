@@ -85,6 +85,8 @@ Summary:
 | Brand-fact consistency across pages | `workflows/content-reference.md` + `templates/content-reference-template.md` |
 | Apply a design system to Astra + Elementor | `workflows/design-system-rollout.md` + `astra-customizer` + `elementor-mcp` |
 | Comprehensive site audit (no Lighthouse needed) | `workflows/comprehensive-audit.md` |
+| Astra mobile menu debugging (modes + iOS bfcache + 6-layer defense) | `astra-mobile-menu` + `elementor-mcp` (Custom Code Snippets) |
+| "Bug only on one site" — multi-factor cocktail | `workflows/multi-factor-bug-debug.md` |
 
 ## Anti-patterns — STRICTLY avoid
 
