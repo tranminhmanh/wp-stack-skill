@@ -33,7 +33,7 @@ jobs:
             --exclude '^https?://site\.com'
             --exclude '^https?://<.*>'
             --exclude '^https?://(www\.)?linkedin\.com'
-            --exclude-path './templates/content-reference-template.md'
+            --exclude '^file://'
             --max-redirects 5
             --max-retries 2
             './**/*.md'
@@ -41,8 +41,9 @@ jobs:
         # Excludes:
         # - example.com / localhost / site.com / <placeholders> — placeholder URLs in docs
         # - linkedin.com — returns HTTP 999 to all bots / link checkers (anti-scrape)
-        # - templates/content-reference-template.md — uses ../../.claude/skills/... paths
-        #   intended to resolve from the user's project, not from the skill repo root
+        # - file:// — relative paths in templates that resolve outside the skill repo
+        #   (templates are deployed into user projects; paths like ../../.claude/skills/...
+        #   are intentional and resolve at deployment time, not CI time)
 
   php:
     name: PHP syntax check
