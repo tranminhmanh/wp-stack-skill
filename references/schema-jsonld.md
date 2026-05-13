@@ -13,7 +13,7 @@ Reference cho mọi site cần rich schema markup (LocalBusiness, Physician, Art
 ```jsonld
 // BEFORE — same @id, 2 fragments
 {"@id": "https://site.com/#organization", "@type": "Organization", "name": "Site Name"}  // Rank Math
-{"@id": "https://site.com/#organization", "@type": "MedicalClinic", "name": "Phòng khám Mai Thanh",
+{"@id": "https://site.com/#organization", "@type": "MedicalClinic", "name": "<Clinic Name>",
  "address": {...}, "founder": [...], ...}  // Custom
 
 // → Google merge: 2 names, address from #2, founder from #2, plain description from #1
@@ -31,7 +31,7 @@ Reference cho mọi site cần rich schema markup (LocalBusiness, Physician, Art
   "@id": "https://site.com/#localbusiness",
   "@type": ["MedicalClinic", "LocalBusiness"],
   "parentOrganization": {"@id": "https://site.com/#organization"},  // ← cross-link UP
-  "name": "Phòng khám Sản Phụ Khoa Mai Thanh",
+  "name": "<Full Clinic Name>",
   "address": {...},
   "founder": [...],
   // 12 props rich
@@ -80,11 +80,11 @@ Generic Physician schema (8 fields: name, url, medicalSpecialty) miss E-E-A-T si
 {
   "@type": "Physician",
   "@id": "https://site.com/doctor-slug/#physician",
-  "name": "BS CK1 Huỳnh Thị Mai Thanh",
-  "alternateName": ["Bác sĩ Mai Thanh", "Huỳnh Thị Mai Thanh"],
+  "name": "BS CK1 <Doctor Full Name>",
+  "alternateName": ["Bác sĩ <Last Name>", "<Doctor Full Name>"],
   "honorificPrefix": "BS CK1",
-  "honorificSuffix": "Bác sĩ trẻ tiêu biểu TP.HCM",
-  "description": "12 năm kinh nghiệm khám thai và sản phụ khoa tại Bệnh viện Từ Dũ.",
+  "honorificSuffix": "<Honorific Award/Recognition>",
+  "description": "<N> năm kinh nghiệm <specialty> tại <Top Hospital Name>.",
   "image": "https://site.com/wp-content/uploads/doctor-photo.jpg",
   "url": "https://site.com/doctor-slug/",
   "jobTitle": "Bác sĩ Chuyên khoa I — Sản Phụ Khoa",
@@ -106,23 +106,23 @@ Generic Physician schema (8 fields: name, url, medicalSpecialty) miss E-E-A-T si
   "worksFor": {"@id": "https://site.com/#localbusiness"},
   "hospitalAffiliation": {
     "@type": "Hospital",
-    "name": "Bệnh viện Từ Dũ",
+    "name": "<Top Hospital Name>",
     "address": {
       "@type": "PostalAddress",
-      "streetAddress": "284 Cống Quỳnh, Phường Phạm Ngũ Lão",
-      "addressLocality": "Quận 1",
-      "addressRegion": "TP.HCM",
+      "streetAddress": "<Street Address>",
+      "addressLocality": "<City District>",
+      "addressRegion": "<City Region>",
       "addressCountry": "VN"
     }
   },
   "memberOf": [
-    {"@type": "MedicalOrganization", "name": "Hội Sản Phụ khoa Việt Nam"},
-    {"@type": "MedicalOrganization", "name": "Hội Y học Sinh sản TP.HCM"}
+    {"@type": "MedicalOrganization", "name": "<Professional Association 1>"},
+    {"@type": "MedicalOrganization", "name": "<Professional Association 2>"}
   ],
   "alumniOf": {
     "@type": "CollegeOrUniversity",
-    "name": "Đại học Y Phạm Ngọc Thạch",
-    "url": "https://pnt.edu.vn"
+    "name": "<Medical University Name>",
+    "url": "https://<university-domain>/"
   }
 }
 ```

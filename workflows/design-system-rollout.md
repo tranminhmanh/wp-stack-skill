@@ -330,7 +330,7 @@ Unified Phase 5 CSS:
 
 ### Real-world result
 
-CV (Chacavungtau) Phase 5 applied → all CRO sections match brand sec-head. User feedback shifted: "trang trông thống nhất, professional".
+Real-world Phase 5 application → all custom-injected CRO sections match brand sec-head typography. User feedback shifted from "lộn xộn" to "trang trông thống nhất, professional".
 
 ## Phase 6 — Canonical IA reorder via JS `insertBefore`
 

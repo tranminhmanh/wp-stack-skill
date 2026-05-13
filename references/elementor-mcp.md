@@ -578,7 +578,7 @@ Inject CSS via `add-html` widget ở vị trí `position=0` của container đ�
 ```python
 add-html(
   parent_id="<hero-container-id>",
-  html_content='<style id="livesfx-design-system">/* CSS rules here */</style>'
+  html_content='<style id="brand-design-system">/* CSS rules here */</style>'
 )
 ```
 
