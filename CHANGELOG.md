@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] — 2026-05-13
+
+Round 8 weekly insights distillation — 7 patterns from one production session (Rank Math MCP wrapper plugin build + SEO automation across 86 posts). One major new workflow: end-to-end recipe for wrapping any existing WP plugin's REST routes into MCP-discoverable abilities.
+
+### Added — 1 new workflow
+
+- **`workflows/build-mcp-wrapper-plugin.md`** — end-to-end recipe for wrapping a WP plugin's REST routes into MCP abilities so AI agents can discover and call them. Bundles 5 framework gotchas: REST routes vs WP-Abilities Framework distinction, canonical hook `wp_abilities_api_init`, `ArrayObject` (not `stdClass`) for empty `input_schema.properties`, `meta.show_in_rest: true` required for REST visibility, GET/POST/dummy-input call-pattern matrix. Real proof: one wrapper plugin, 4 REST routes → 16 abilities, v1.0.0 → v2.0.2 over 12 iterations in 5 hours.
+
+### Changed
+
+- **`references/wp-abilities.md`** — added "Building a wrapper plugin (REST routes → abilities) — 4 gotchas" section as lookup-friendly reference companion to the new workflow. Each gotcha (canonical hook, ArrayObject empty schema, show_in_rest visibility, call-pattern matrix) documented with wrong / right code + symptoms + cross-reference to the workflow.
+- **`workflows/seo-audit.md`** — added "Focus-keyword automation — tags beat title-slice heuristic" section. Documents the 19.9 → 64.6 avg Rank Math SEO score lift (86 posts, +225%) when switching from title-slice keyword inference to tag-based scoring. Includes Python scoring algorithm (tag-in-title +10, tag-in-slug +5, word-overlap ×3, 2-4 words +2, cluster authority +N, penalize sentence-style or no-diacritics), bulk-set via Rank Math `updateMeta` REST, verification pattern.
+- **`references/pitfalls.md`** — added "CloudLinux LVE + Elementor Pro `posts` widget concurrent renders trigger HTTP 500" pitfall. Root cause: per-account memory/I/O quota on shared hosting + heavy widget (DB query + 9 thumbnails) × multiple pillar pages × concurrent crawl. Workaround: pre-built static HTML list in `text-editor` widget. Trade-off matrix + when-safe-when-not.
+- **`SKILL.md`** — 1 new row in task → files-to-load matrix.
+- **`README.md`** — 17 workflows (was 16).
+
+### Sources — patterns extracted from
+
+- **Inherited B2B site Rank Math automation session** — 5 hours building `rankmath-mcp` wrapper plugin (v1.0.0 → v2.0.2, 12 install cycles); bulk-setting focus keywords across 86 posts with V1 (title slice) → V2 (tag scoring) iteration; 3 pillar pages broken by `posts` widget cocktail on CloudLinux LVE.
+
+[0.6.0]: https://github.com/tranminhmanh/wp-stack-skill/releases/tag/v0.6.0
+
 ## [0.5.1] — 2026-05-11
 
 ### Fixed
