@@ -57,7 +57,7 @@ walk(structure['elements'])
 Output: a list like
 ```
 - 4a8f29c heading "Dịch vụ khám phụ khoa toàn diện"
-- 7c1d83b text-editor "Phòng khám Mai Thanh cung cấp các dịch vụ khám phụ khoa định kỳ..."
+- 7c1d83b text-editor "Phòng khám X cung cấp các dịch vụ khám phụ khoa định kỳ..."
 - 8e5f12a icon-list "5 lý do chọn chúng tôi: bác sĩ giỏi, thiết bị hiện đại..."
 - ...
 ```
@@ -69,7 +69,7 @@ For each widget from Phase 1, write the state + reason. This is the **only** pha
 | Widget ID | Type | Preview | State | Reason |
 |---|---|---|---|---|
 | 4a8f29c | heading | "Dịch vụ khám phụ khoa toàn diện" | KEEP | Strong brand-aligned heading |
-| 7c1d83b | text-editor | "Phòng khám Mai Thanh cung cấp..." | ENHANCE | Solid intro paragraph, but 50 words — pad to 120 with one anchor stat + reassurance line |
+| 7c1d83b | text-editor | "Phòng khám X cung cấp..." | ENHANCE | Solid intro paragraph, but 50 words — pad to 120 with one anchor stat + reassurance line |
 | 8e5f12a | icon-list | "5 lý do chọn chúng tôi..." | MOVE | Content good, but list-with-bullet style is dated → move into a 3×2 card grid section |
 | f4d12bc | image | (placeholder demo image) | REMOVE | Demo content from page builder template, not real |
 | 91a8d3e | text-editor | "Lorem ipsum dolor sit amet..." | REPLACE | Lorem ipsum, no real content → recreate (confirm with user first) |

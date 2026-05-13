@@ -73,7 +73,7 @@ Example plan markdown:
 - Excluded: pillar page itself (4630), draft/trash status
 - Position: prepend
 - Estimated count: ~4-5 posts
-- Pillar URL: https://phongkhammaithanh.com/dich-vu-kham-phu-khoa/
+- Pillar URL: https://<site>/<pillar-slug>/
 ```
 
 ### Stage 2: Dry-run query (no writes)

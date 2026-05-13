@@ -18,7 +18,7 @@ HTML5 native — zero JavaScript, accessibility built-in.
 
 <details class="faq-item">
   <summary>Chi phí khám phụ khoa khoảng bao nhiêu?</summary>
-  <p>Khám phụ khoa cơ bản tại phòng khám Mai Thanh từ <strong>300.000-500.000đ</strong>...</p>
+  <p>Khám phụ khoa cơ bản tại phòng khám từ <strong>300.000-500.000đ</strong>...</p>
 </details>
 ```
 
