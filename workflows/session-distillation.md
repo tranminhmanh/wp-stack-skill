@@ -229,6 +229,99 @@ Skill có thể sai. Khi gặp insight phản bác:
 Distillation: ~30 phút. Coverage: 6 reusable patterns + 2 project facts captured.
 ```
 
+## Pre-push brand-leak scan — MUST cover BOTH file content AND commit message
+
+⚠️ **Critical rule cho mọi push to public skill repo**: brand-leak scan phải kiểm BOTH:
+1. File content (modified + new files)
+2. **Commit message text itself** (often forgotten — leak lives in git log forever)
+
+### Real-world miss (anonymized 2026-05-13)
+
+Distillation session scrubbed 12 brand instances từ 6 skill files, commit + push to main. Commit message body **liệt kê toàn bộ leak gốc plaintext** trong before→after substitution table — leak xuất hiện trên public GitHub commit page (forever indexed). Required amend + `--force-with-lease` push để rewrite history. Same pitfall struck the documentation commit itself initially — `<placeholder>` syntax in body table avoids it.
+
+### Pre-push checklist (5 commands)
+
+```bash
+cd ~/.claude/skills/wp-stack
+
+# 1. Scan staged/changed file CONTENT for project-specific terms
+git diff --cached | grep -iE "your-site\.com|client-name|doctor-name|hospital-name|<other brand terms>" && echo "LEAK IN CONTENT" || echo "CONTENT CLEAN"
+
+# 2. Scan working tree files (catch new files not yet staged)
+for term in "site-domain" "client-name" "doctor-name" "hospital-name"; do
+    count=$(grep -rli --include="*.md" "$term" references/ workflows/ SKILL.md 2>/dev/null | wc -l)
+    [ "$count" -gt 0 ] && echo "LEAK: $term in $count files"
+done
+
+# 3. PREPARE commit message in /tmp/msg.txt FIRST (don't inline -m)
+$EDITOR /tmp/commit-msg.txt
+# Write structural description without quoting actual brand strings.
+
+# 4. SCAN the commit message itself BEFORE committing
+for term in "site-domain" "client-name" "doctor-name" "hospital-name"; do
+    grep -i "$term" /tmp/commit-msg.txt && echo "LEAK IN MESSAGE"
+done
+
+# 5. Only after both scans clean — commit + push
+git commit -F /tmp/commit-msg.txt
+git push origin HEAD
+rm /tmp/commit-msg.txt  # cleanup
+```
+
+### Commit message style — describe structure, not content
+
+| ❌ Wrong (leaks brand in message) | ✅ Right (structural description) |
+|---|---|
+| `"<ActualSiteDomain>" → "site.com"` | `site URL placeholder` |
+| `"<RealClientName>" → "<Clinic Name>"` | `clinic name placeholder` |
+| `"<RealDoctorName>" → "<Doctor>"` | `doctor name + alternate names` |
+| `"<RealHospitalName>" → "<Hospital>"` | `hospital affiliation example` |
+
+Note: the ❌ column above uses meta-placeholders `<ActualXxx>` to describe the anti-pattern without itself leaking. The pattern is: never quote the actual brand string in commit messages — describe field type only.
+
+The git log entry stays informative ("8 replacements in schema-jsonld.md Physician template covering doctor name, hospital, university, professional associations") without exposing the originals.
+
+### Why this matters
+
+- GitHub commits are **forever public** even after file scrub (visible via commit page, GitHub search, code mirrors, Wayback Machine archives, JSON API)
+- `git log -p` retrieves full message history → bypass file scrub entirely
+- Code search engines (Sourcegraph, grep.app) index commit messages
+- AI training corpora often include commit messages → leak baked into future models
+
+### Brand-term blocklist per project
+
+Each project's `CLAUDE.md` should declare its brand-leak blocklist for skill push scans. Example structure in [`templates/project-claude-md-template.md`](../templates/project-claude-md-template.md):
+
+```markdown
+## Brand-leak blocklist (for skill push scans)
+
+Terms that must NEVER appear in public skill repo (`references/`, `workflows/`, SKILL.md, commit messages):
+
+- Site domain: `site-domain.com`
+- Brand display name: `Brand Display Name`, `Brand Vietnamese Spelling`
+- Person names: `Person 1 Full Name`, `Person 2 Full Name`, common shortenings
+- Institution affiliations: `Top Hospital Name`, `University Name`
+- Specific addresses, phone numbers, license numbers
+- Project codename / shorthand if site-identifying (e.g. abbreviation appears nowhere else online)
+```
+
+### Force-push amendment recovery
+
+If brand leak shipped in commit message (post-push discovery):
+
+```bash
+# 1. Rewrite last commit with sanitized message
+git commit --amend -F /tmp/sanitized-msg.txt
+
+# 2. Force push with --force-with-lease (safer than --force)
+git push origin main --force-with-lease
+
+# Warn before doing: any collaborator already pulled the bad commit has
+# divergent local history. Solo repos low impact; team repos require notice.
+```
+
+⚠️ Force-push to main always requires user explicit "yes". Per safety rules, never force push without prior confirmation.
+
 ## Liên quan
 
 - [`SKILL.md`](../SKILL.md) — separation of concerns (skill = WHAT, project = WHERE/WHO)
