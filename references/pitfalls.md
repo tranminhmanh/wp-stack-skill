@@ -1352,3 +1352,77 @@ curl -u "$U:$APP_PW" "$SITE/wp-json/wp/v2/pages/N?context=edit" \
 **Cross-reference**: this audit-sweep step belongs in the design-system-rollout workflow — see [`workflows/design-system-rollout.md`](../workflows/design-system-rollout.md) "Phase 3 — Layer 3: Widget audit + bulk fix" Step 3e.
 
 **Reusability**: critical for any site running Element Pack Pro at scale.
+
+## CloudLinux LVE + Elementor Pro `posts` widget — concurrent renders trigger HTTP 500
+
+**Symptom**: an Elementor Pro `posts` widget (9 items, default config) added to 3 pillar pages on a shared host → **all 3 pillar pages return HTTP 500** the moment they're crawled / visited concurrently. Homepage and other pages render fine. Rolling back the 3 widget additions restores 200 OK immediately.
+
+**Detection**:
+```bash
+# Check if site runs CloudLinux LVE
+# Admin notification email envelope often contains: MariaDB-cll-lve
+# Or: SSH-accessible sites can run `lveinfo` to see the per-account limits
+
+# Reproduce: add 1 posts widget on one pillar → OK. Add on 3 pillars → 500 on all 3.
+# Rollback all 3 → 200 OK.
+```
+
+**Root cause**: CloudLinux LVE imposes **per-account** memory + I/O limits on shared hosting (LVE = Lightweight Virtualization Environment). Elementor Pro's `posts` widget per request: DB query (top N posts ordered by date/taxonomy filter) + load 9 thumbnails per page. When 3 pillar pages each render this widget and a crawler / cache warmer / multi-tab user hits them in parallel:
+
+```
+3 pages × (1 DB query + 9 thumbnail decodes + 9 image transform calls) = ~30+ concurrent operations
+  → PHP-FPM worker memory grows → exceed pmem quota → worker killed
+  → 500 returned on ALL 3 pages (not just the newest one)
+```
+
+This isn't a bug in Elementor or the host — it's the **cocktail** of widget heaviness + concurrency + LVE per-account limits. The same widget on a VPS without LVE renders fine.
+
+**Workaround** — replace the dynamic `posts` widget with a pre-built static HTML list inside a `text-editor` widget:
+
+1. Pre-fetch the top 30 posts per category via REST one time:
+   ```bash
+   curl -u "$U:$APP_PW" "$SITE/wp-json/wp/v2/posts?per_page=30&categories=N&_fields=id,title,link,date" \
+     > /tmp/posts.json
+   ```
+
+2. Generate the HTML list locally:
+   ```python
+   import json
+   posts = json.load(open('/tmp/posts.json'))
+   html = '<ul class="post-list">'
+   for p in posts[:9]:
+       html += f'<li><a href="{p["link"]}">{p["title"]["rendered"]}</a></li>'
+   html += '</ul>'
+   ```
+
+3. Embed the HTML in a `text-editor` widget (or `html` widget) via Elementor MCP. Refresh quarterly when new posts publish.
+
+**Trade-off matrix**:
+
+| Aspect | Elementor Pro `posts` widget | Static HTML in `text-editor` |
+|---|---|---|
+| Auto-pickup of new posts | ✅ (live query) | ❌ (refresh quarterly) |
+| Server load per request | Heavy (DB query + 9 image transforms) | Zero (static HTML) |
+| LVE risk | High under concurrency | None |
+| Build effort | Low (drag widget) | Low (one curl + script) |
+| Maintenance | Auto | Quarterly regeneration |
+
+**When the dynamic widget IS safe**:
+- VPS / dedicated host without LVE
+- Single-pillar usage (1 page with `posts` widget, not 3+ pages)
+- Cache plugin (LiteSpeed / WP Rocket) configured to serve cached HTML — DB query happens once, then cache absorbs the load
+
+**When the static list is the only safe option**:
+- Shared host with CloudLinux LVE active
+- High-traffic site where crawlers / Lighthouse / cache warmers hit pillar pages in parallel
+- Need to be defensive about pmem quota
+
+**Reusability**: shared hosting with LVE constraint — affects WordPress sites on most cPanel / AZDIGI / Bluehost / Hostgator / Hostinger Business / similar shared plans. The pattern (dynamic widget + concurrent crawl + per-account memory limit) generalizes beyond `posts` widget: any DB-heavy + image-transform-heavy Elementor widget multiplied across sibling pages.
+
+**Family of "per-account quota exceeded" silent fails on shared hosts**:
+- AZDIGI PHP-FPM worker exhaustion (see earlier entry above)
+- CloudLinux LVE pmem quota (this entry)
+- Imunify360 WAF blocking concurrent script uploads (see [`deployment.md`](../references/deployment.md))
+- LiteSpeed CCSS staleness on shared host (see "LiteSpeed CCSS" above)
+
+All have the same shape: shared resource + concurrency → silent 500 / silent fail. Detection requires the "multi-factor cocktail" methodology (see [`workflows/multi-factor-bug-debug.md`](../workflows/multi-factor-bug-debug.md)).

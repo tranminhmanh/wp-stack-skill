@@ -433,6 +433,126 @@ Dashboard mở được trong browser, send qua Slack/email cho stakeholder khô
 
 Battle-tested 2026-05-10: dashboard 32KB embed 20 page, render < 100ms, share được link via cloud storage.
 
+## Focus-keyword automation — tags beat title-slice heuristic
+
+After auditing finds posts with missing `rank_math_focus_keyword`, the bulk-fix temptation is to **slice the post title** (first 3–5 words). It produces too many truncated / nonsensical keywords (cụt-câu in Vietnamese: "điều cần lưu ý trước"). The better source: **user-curated WP tags**.
+
+### Why tags beat title heuristics
+
+| Source | Quality signal | Failure mode |
+|---|---|---|
+| Title slice (first N words) | None — purely positional | Cuts mid-phrase; "Top 20...", "Hướng dẫn..." filler dominates |
+| WP tags | Human-curated; tag = topic the author chose | Some tags are too generic ("blog"), some too specific ("thai 12 tuần 3 ngày") — needs scoring |
+
+Real measurement on one site (86 posts, before / after):
+
+| Metric | V1 (title slice) | V2 (tags) |
+|---|---:|---:|
+| Focus keyword set | 84/86 (97%) | 86/86 (100%) |
+| Cụt-câu (truncated meaning) | ~10 cases | 1 case |
+| Avg Rank Math SEO score | ~30 | **64.6** |
+| Posts scoring ≥70 | unmeasured | 38/86 (44%) |
+
+The score jump (+225% over baseline) is from the keyword now actually matching the content's topical theme, so Rank Math's other on-page checks (keyword in title, in URL, in first paragraph, density) start passing automatically.
+
+### Scoring algorithm
+
+Pick the best tag for each post via a weighted score:
+
+```python
+def normalize(s: str) -> str:
+    """Lowercase + strip Vietnamese diacritics for comparison."""
+    import unicodedata
+    return unicodedata.normalize('NFD', s.lower()) \
+                      .encode('ascii', 'ignore').decode('ascii')
+
+def has_vn_diacritics(s: str) -> bool:
+    return any(0x0300 <= ord(c) <= 0x036F or 0x1EA0 <= ord(c) <= 0x1EF9 for c in s)
+
+def score_tag(tag_name: str, title: str, slug: str, cluster_count: int) -> int:
+    """Higher score = better candidate for focus_keyword. Returns -inf if disqualified."""
+    score = 0
+    tag_norm = normalize(tag_name)
+    title_norm = normalize(title)
+    tag_words = tag_norm.split()
+    title_words = set(title_norm.split())
+
+    # Strong positives
+    if tag_norm in title_norm:          score += 10   # tag appears in title (exact-ish)
+    if tag_norm in slug:                score += 5    # tag appears in URL slug
+    score += 3 * len(set(tag_words) & title_words)    # word overlap
+
+    # Length preference: 2-4 words is the SEO sweet spot
+    if 2 <= len(tag_words) <= 4:        score += 2
+
+    # Cluster authority: tags used on many posts are "topic authorities"
+    score += min(cluster_count - 1, 5)
+
+    # Penalties — disqualify weak tags
+    if len(tag_words) > 6:              score -= 15   # sentence-style tag, not a keyword
+    if not has_vn_diacritics(tag_name): score -= 5    # slug-style tag like "3 thang cuoi"
+
+    return score
+
+def pick_best_tag(post_tags: list, title: str, slug: str, tag_post_counts: dict) -> str | None:
+    """Return the highest-scoring tag, or None if all are disqualified."""
+    if not post_tags:
+        return None
+    scored = [(score_tag(t, title, slug, tag_post_counts.get(t, 1)), t) for t in post_tags]
+    scored.sort(reverse=True)
+    best_score, best_tag = scored[0]
+    return best_tag if best_score > 0 else None
+```
+
+### Bulk-set focus keyword via Rank Math `updateMeta` REST
+
+```python
+import json, base64, urllib.request
+
+AUTH = "Basic " + base64.b64encode(f"{USER}:{APP_PW}".encode()).decode()
+
+def set_focus_keyword(post_id: int, keyword: str) -> int:
+    payload = {"objectID": post_id, "objectType": "post",
+               "meta": {"rank_math_focus_keyword": keyword}}
+    req = urllib.request.Request(
+        f"{SITE}/wp-json/rankmath/v1/updateMeta",
+        data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+        headers={"Authorization": AUTH, "Content-Type": "application/json"},
+        method="POST",
+    )
+    return urllib.request.urlopen(req, timeout=20).getcode()
+
+# Bulk loop
+for post in posts:
+    best = pick_best_tag(post['tag_names'], post['title'], post['slug'], tag_counts)
+    if best:
+        set_focus_keyword(post['id'], best)
+        print(f"✓ post {post['id']}: {best}")
+    else:
+        print(f"⚠ post {post['id']}: no tag passed scoring — manual review")
+```
+
+### When this won't work
+
+- **Site has no tags** (or tags are too generic — "blog", "news"). Fall back to title-slice but accept lower quality.
+- **English-only site** — drop the `has_vn_diacritics` penalty; the rest of the algorithm works.
+- **Heavy taxonomy site** — categories may be a better source than tags. Adjust the loop to read `post.category_names` instead.
+- **Manual editorial control** — if the user prefers to pick focus keywords by hand, this automation is wrong. Run it once for the backlog + leave new posts to the editor.
+
+### Verifying the lift
+
+After bulk-set, re-audit Rank Math scores:
+```bash
+# Use Rank Math's bulk-edit endpoint or per-post fetch
+for post_id in $POST_IDS; do
+  score=$(curl -u "$U:$P" "$SITE/wp-json/wp/v2/posts/$post_id?_fields=meta&context=edit" \
+          | jq -r '.meta.rank_math_seo_score // 0')
+  echo "$post_id: $score"
+done
+```
+
+Compare distribution before / after — the lift comes from the keyword now matching what Rank Math's on-page rules can detect in the rendered HTML.
+
 ## Liên quan
 
 - [`references/seo-checklist.md`](../references/seo-checklist.md) — Rank Math meta keys, Schema 3 types, OfferCatalog

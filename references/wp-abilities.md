@@ -335,6 +335,111 @@ url = f"https://example.com/wp-json/wp/v2/{base}?slug=my-location"
 
 **Reusability**: universal for ALL WP REST API consumers.
 
+## Building a wrapper plugin (REST routes → abilities) — 4 gotchas
+
+When wrapping an existing plugin's REST routes into MCP abilities (full workflow: [`workflows/build-mcp-wrapper-plugin.md`](../workflows/build-mcp-wrapper-plugin.md)), these 4 quirks of the WP Abilities Framework are the most frequent iteration costs.
+
+### Canonical registration hook — `wp_abilities_api_init`
+
+`wp_register_ability()` only persists registrations called from the `wp_abilities_api_init` hook. Calling it from `plugins_loaded`, `init`, `rest_api_init`, or anywhere else returns success **but the ability silently does not enter the registry**.
+
+```php
+// ✅ CORRECT
+add_action( 'wp_abilities_api_categories_init', $register_categories_callback );
+add_action( 'wp_abilities_api_init',            $register_abilities_callback );
+
+// ❌ WRONG — returns success but ability NOT registered
+add_action( 'plugins_loaded', $register_abilities_callback, 20 );
+add_action( 'init',           $register_abilities_callback );
+add_action( 'rest_api_init',  $register_abilities_callback );
+```
+
+Verified pattern from upstream `elementor-mcp` plugin (48 abilities, working). Iterating wrong hooks costs ~15 min per cycle (plugin reinstall + smoke test).
+
+### Empty `input_schema.properties` — use `ArrayObject`, NOT `stdClass`
+
+When an ability has no input parameters, `input_schema.properties` must serialize to a JSON empty object `{}`. Two PHP types can serialize that way, but only one survives the WP 6.9.4+ schema validator.
+
+```php
+// ❌ WRONG — fatal on WP 6.9.4+:
+// Cannot use object of type stdClass as array in rest-api.php:2397
+'input_schema' => [
+    'type'                 => 'object',
+    'properties'           => new \stdClass(),
+    'additionalProperties' => false,
+],
+
+// ✅ CORRECT — ArrayObject implements both ArrayAccess (PHP bracket syntax)
+//             and JsonSerializable (JSON `{}` output)
+'input_schema' => [
+    'type'                 => 'object',
+    'properties'           => new \ArrayObject(),
+    'additionalProperties' => true,
+    'default'              => new \ArrayObject(),
+],
+```
+
+WP core's `rest_validate_object_value_from_schema()` accesses `$schema['properties'][$key]` via PHP bracket syntax. `stdClass` doesn't implement `ArrayAccess` → fatal. `ArrayObject` does both interfaces → works.
+
+### `meta.show_in_rest: true` REQUIRED for REST visibility
+
+Without `show_in_rest: true`, an ability is registered internally (visible to `wp_get_abilities()`) but **invisible** via the REST endpoint `/wp-abilities/v1/abilities` — the controller filters by this exact flag. MCP clients can't discover it. Symptom: ability count gap (e.g. internal registry has 266, REST list has 50).
+
+```php
+// ❌ WRONG — registered but NOT REST-visible
+'meta' => [
+    'annotations' => [ 'readonly' => true, 'destructive' => false, 'idempotent' => true ],
+],
+
+// ✅ CORRECT
+'meta' => [
+    'annotations'  => [ 'readonly' => true, 'destructive' => false, 'idempotent' => true ],
+    'show_in_rest' => true,
+],
+```
+
+Bake into helper functions to enforce consistency across every ability:
+```php
+function rmcp_meta_read(): array {
+    return [
+        'annotations'  => [ 'readonly' => true, 'destructive' => false, 'idempotent' => true ],
+        'show_in_rest' => true,
+    ];
+}
+function rmcp_meta_write(): array {
+    return [
+        'annotations'  => [ 'readonly' => false, 'destructive' => true, 'idempotent' => false ],
+        'show_in_rest' => true,
+    ];
+}
+```
+
+### Call-pattern matrix — GET / POST / dummy input
+
+The framework infers the HTTP method from `meta.annotations.readonly`. Wrong method → 405; wrong body shape → 400. The dummy-input quirk is the least-documented:
+
+| Ability shape | HTTP method | Args / body | Error when wrong |
+|---|---|---|---|
+| Read (`readonly: true`) | GET | `?input[k]=v` (PHP nested array URL syntax) | `405 rest_ability_invalid_method` if POST; `400` if direct `?k=v` |
+| Write (`readonly: false`) | POST | Body `{"input": {...}}` JSON wrapper | `405` if GET; `400` if raw body without `input` wrapper |
+| Zero-input | GET | `?input[_]=1` (dummy property) | `400 "input không phải là loại của object"` if `?input` omitted entirely |
+
+```bash
+# Read
+curl ".../wrapper-mcp/get-something/run?input[id]=8124"
+
+# Write
+curl -X POST ".../wrapper-mcp/update-something/run" \
+  -d '{"input": {"id": 8124, "data": {"key": "value"}}}'
+
+# Zero-input — the dummy is required because the validator runs BEFORE schema defaults
+curl ".../wrapper-mcp/get-stats/run?input[_]=1"
+```
+
+The validator runs **before** schema `default` is applied → even `default = new ArrayObject()` doesn't satisfy the "input must be present" check. The `?input[_]=1` dummy is accepted only when `additionalProperties: true` on the schema (so the unknown `_` key is allowed).
+
+**Recommendation**: avoid zero-input abilities entirely. Give every ability at least one optional property (`since`, `limit`, etc.) so users never hit the dummy-input footgun.
+
 ## Liên quan
 
 - [`mcp-architecture.md`](mcp-architecture.md) — vì sao endpoint MCP server tách biệt khỏi abilities registry

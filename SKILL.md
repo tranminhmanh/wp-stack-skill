@@ -87,6 +87,7 @@ Summary:
 | Comprehensive site audit (no Lighthouse needed) | `workflows/comprehensive-audit.md` |
 | Astra mobile menu debugging (modes + iOS bfcache + 6-layer defense) | `astra-mobile-menu` + `elementor-mcp` (Custom Code Snippets) |
 | "Bug only on one site" — multi-factor cocktail | `workflows/multi-factor-bug-debug.md` |
+| Wrap a plugin's REST routes into MCP abilities | `workflows/build-mcp-wrapper-plugin.md` + `wp-abilities` |
 
 ## Anti-patterns — STRICTLY avoid
 
