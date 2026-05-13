@@ -110,3 +110,74 @@ Format: `[Main keyword] — [USP highlight] | Brand`
 Examples:
 - ✅ "Vận chuyển VN-Hàn Quốc — Cước cạnh tranh | Brand" (49 chars)
 - ❌ "Vận chuyển container Việt Nam đi Hàn Quốc — Báo giá miễn phí trong 4 giờ" (74 chars, SERP truncates)
+
+## Tooling: PowerShell scripts với Vietnamese content cần UTF-8 BOM
+
+Khi viết PowerShell `.ps1` script chứa Vietnamese characters (comments, string literals, output messages), PS 5.1 (Windows default) đọc file theo **system codepage** (Windows-1252 cho VN locale). Bytes UTF-8 của diacritic chars → decoded thành garbage → parser error.
+
+### Symptom
+
+```powershell
+# script.ps1 written by VS Code "UTF-8 no BOM" or Claude Code Write tool
+# Content: "# Tạo backup ảnh — copy to /backup/"
+# em-dash `—` = 3 bytes UTF-8: E2 80 94
+
+PS> .\script.ps1
+At ...\script.ps1:1 char:23
++ # Tạo backup ảnh â€" copy to /backup/
++                       ~~~
+Unexpected token in expression or statement.
+ParserError ...
+```
+
+3 bytes `E2 80 94` (em-dash UTF-8) → Win-1252 decoder thấy `â€"` (3 garbage chars) → PS parser sees broken token.
+
+### Root cause
+
+PS 5.1 `Get-Content` / script loader detect file encoding **bằng BOM signature**:
+- File có UTF-8 BOM (3 bytes `EF BB BF` đầu file) → parse correctly
+- File no BOM → assume system codepage (Win-1252, CP-936, ...)
+
+PS 7+ default UTF-8 (no BOM needed). Cross-version-safe: always BOM cho PS 5.1.
+
+### Fix
+
+```powershell
+$f = "path\to\script.ps1"
+
+# Read content (UTF-8 decoder explicit)
+$content = [IO.File]::ReadAllText($f, [Text.UTF8Encoding]::new($false))
+
+# Re-write with BOM ($true = include BOM)
+$utf8Bom = New-Object Text.UTF8Encoding($true)
+[IO.File]::WriteAllText($f, $content, $utf8Bom)
+
+# Verify BOM (first 3 bytes should be EF BB BF)
+$bytes = [IO.File]::ReadAllBytes($f)[0..2]
+"BOM: $('{0:X2} {1:X2} {2:X2}' -f $bytes[0], $bytes[1], $bytes[2])"
+# Output: BOM: EF BB BF
+```
+
+### Gotcha
+
+Edit tools (vd Claude Code Edit, VS Code save) có thể strip BOM khi modify file. Re-add BOM sau mỗi major edit:
+```powershell
+# Run after every major .ps1 edit
+$f = "path\to\script.ps1"
+$content = [IO.File]::ReadAllText($f, [Text.UTF8Encoding]::new($false))
+[IO.File]::WriteAllText($f, $content, [Text.UTF8Encoding]::new($true))
+```
+
+### Alternative: ASCII-only comments
+
+Strip Vietnamese từ `.ps1` comments + string literals — write code in English-only. Trade-off: less readable cho VN devs.
+
+### Reusability
+
+Universal cho any non-ASCII content in PS 5.1 scripts:
+- Vietnamese (đ, ă, ê, ơ, ư, ô, à, á, è, é, ...)
+- Em-dash `—` and en-dash `–` (used in markdown-style headers)
+- Chinese, Japanese, Korean, Cyrillic
+- Smart quotes `"…"`, `'…'`
+
+PowerShell 7+ default UTF-8 — không cần BOM nếu chạy PS 7+.

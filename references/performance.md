@@ -188,3 +188,109 @@ docker exec <container> php -r 'opcache_reset();'
 # 3. Browser
 # URL?fresh=$(date +%s%N) + Cmd+Shift+R
 ```
+
+## LiteSpeed Cache lifecycle — 2 invalidation paths
+
+LSC cache invalidates qua 2 different paths, behave differently:
+
+| Path | Trigger | Reliability |
+|---|---|---|
+| **Per-post auto-purge** | `save_post` hook fires (post update/REST PATCH/MCP edit) | ✓ Reliable |
+| **Manual "Purge All"** | Admin clicks LSC Toolbox button | ⚠️ Sometimes flaky via REST/CLI; works via UI |
+| **Plugin toggle** (deactivate→reactivate) | Last-resort nuke | ✓ Reliable but heavy |
+
+### Recommended workflow
+
+```bash
+# Want fresh content for ONE page → use update path, not purge
+curl -X POST -u $U:$P \
+  "https://site/wp-json/wp/v2/pages/4540" \
+  -d '{"content": "updated"}'
+# → save_post fires → LSC auto-purges page 4540 → frontend fresh
+
+# Want full site fresh → use UI not REST API
+# wp-admin → LiteSpeed Cache → Toolbox → Purge All
+# (LSC REST endpoint /litespeed-cache/v1/purge — known flaky)
+```
+
+### When REST GET stale-read
+
+Sau write thành công, GET ngay sau có thể trả stale value. Đặc biệt với WP-Abilities REST `/wp-json/wp-abilities/v1/abilities/*/run`. Fix: add `rest_post_dispatch` filter emit no-cache headers — xem [`workflows/litespeed-cache-mgmt.md`](../workflows/litespeed-cache-mgmt.md) section 1 cho code recipe.
+
+## LiteSpeed default `max-age=604800` (7 days) → Lighthouse cache policy FAIL
+
+LSC default sets `public, max-age=604800` (7 days) cho mọi cached resource. Lighthouse "Serve static assets with an efficient cache policy" audit FAILS với 7 days — Lighthouse wants ≥30 days, ideally 1 year + `immutable` cho versioned/hashed assets.
+
+### Fix via .htaccess override
+
+```apache
+# .htaccess in WP root, BELOW LiteSpeed rules
+<IfModule mod_expires.c>
+    ExpiresActive On
+
+    # Versioned/hashed static assets — 1 year + immutable
+    <FilesMatch "\.(woff2|woff|ttf|eot|otf)$">
+        Header set Cache-Control "public, max-age=31536000, immutable"
+    </FilesMatch>
+
+    # Versioned JS/CSS (WP appends ?ver= to enqueued URLs)
+    <FilesMatch "\.(js|css)$">
+        Header set Cache-Control "public, max-age=31536000, immutable"
+    </FilesMatch>
+
+    # Images (rare update — 6 months)
+    <FilesMatch "\.(jpg|jpeg|png|webp|gif|svg|ico)$">
+        Header set Cache-Control "public, max-age=15552000"
+    </FilesMatch>
+</IfModule>
+```
+
+⚠️ `immutable` chỉ áp dụng cho versioned URLs (`script.js?ver=2.5`). Without version param, browser sẽ NOT revalidate even khi file changes server-side. WP automatically appends `?ver=` cho enqueued scripts/styles → safe cho most theme/plugin assets.
+
+### Verify
+
+```bash
+curl -sI "https://site/wp-content/uploads/2024/05/hero.webp" | grep -i cache-control
+# Expected: max-age=15552000 (after override)
+
+# Re-run Lighthouse "Serve static assets..." audit → should pass
+```
+
+## Avatar `src=""` is LiteSpeed lazy-load, NOT broken image
+
+**Symptom**: View source/grep `<img src="">` returns empty src on `<img>` tags. Looks like broken images.
+
+**Reality**: LiteSpeed Cache plugin's image lazy-load feature rewrites `<img>` tags before serving HTML:
+- `src=""` (empty)
+- `data-lazyloaded="1"` data attribute set
+- Actual URL moved to `data-src` (or `data-srcset` for responsive)
+- JS executes onload → swap data-src → src when visible
+
+This is **expected behavior** — không phải broken.
+
+### Verify
+
+```bash
+curl -s "https://site/" | grep -oE '<img[^>]+>' | head -5
+# Look for data-lazyloaded="1" attribute → confirmed lazy-load rewrite
+```
+
+### Real issue: oversized image, NOT empty src
+
+The actual perf issue:
+- Avatar image 1024×1024 displayed at 50×50 thumbnail size
+- No `srcset` variant generated → browser downloads full 1MB image cho 50px display
+- Lighthouse flags via "Properly size images" audit
+
+### Fix
+
+WordPress automatically generates srcset variants if media uploaded > certain dimensions. Verify:
+```bash
+curl -s "https://site/" | grep -oE 'srcset="[^"]+"' | head -3
+# Expected: multiple URLs with widths (vd avatar-50x50.webp 50w, avatar-100x100.webp 100w, ...)
+```
+
+If no `srcset`:
+- Re-upload image via wp-admin Media (triggers thumbnail generation)
+- Or use Regenerate Thumbnails plugin
+- Or use ShortPixel / Imagify bulk to re-generate

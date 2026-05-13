@@ -366,3 +366,88 @@ Total: 12 install cycles over a single 5-hour session. Each cycle was ~15 minute
 - [`references/mcp-architecture.md`](../references/mcp-architecture.md) — Why MCP-bridge connectors need to point at a plugin's MCP endpoint, not at the abilities-registry endpoint
 - [`workflows/claude-mcp-connector-setup.md`](claude-mcp-connector-setup.md) — Add the wrapper plugin's endpoint as an MCP connector after deployment
 - [`references/seo-checklist.md`](../references/seo-checklist.md) — Rank Math `updateMeta` / `updateRedirection` REST direct-call patterns (alternative to wrapping when one-off automation suffices)
+
+## Deploy wrapper plugin — local zip workflow
+
+After building wrapper plugin source, deploy onto live WordPress site. MCP abilities `mcp-wp/install-plugin` and `mcp-wp/update-plugin` only accept WordPress.org slug or public download URL — they do **NOT** accept local file content/base64. Custom plugins must deploy via alternative paths.
+
+### Deploy paths (in order of preference)
+
+| Path | Effort | Automation | When |
+|---|---|---|---|
+| **Manual wp-admin upload** | ~2 min user action | ❌ Required user click | Single deploy, no CI/CD setup |
+| **Host zip at public URL → `mcp-wp/install-plugin`** | ~5 min setup once | ✓ Automated after URL set | Multi-site rollout, CI/CD |
+| **SCP/SFTP to `/wp-content/plugins/`** | ~3 min if SSH access | ✓ Scriptable | Dev with SSH access |
+| **`mcp-wp/install-plugin` với WordPress.org URL** | ✓ Fully automated | ✓ | Only for public plugins (not custom) |
+
+### Path A: Manual wp-admin upload (recommended for solo dev)
+
+1. Build zip với forward-slash separator (xem [`../references/deployment.md`](../references/deployment.md) "Plugin zip build cross-platform")
+2. `wp-admin → Plugins → Add New → Upload Plugin`
+3. Select zip → Install Now
+4. If "Plugin already installed" → click **Replace current with uploaded** → confirm
+5. Activate Plugin (usually pre-active if v→ overwrites)
+
+User must do step 2-5. Takes ~2 minutes.
+
+### Path B: Public URL + `mcp-wp/install-plugin` (CI/CD automation)
+
+```bash
+# 1. Build zip với forward-slash
+# 2. Upload zip lên public URL (S3, GitHub release, Synology Drive public share, etc.)
+
+# 3. Call MCP ability to install
+mcp__site-global__mcp-adapter-execute-ability(
+    ability_name="mcp-wp/install-plugin",
+    parameters={
+        "download_url": "https://your-cdn/path/wrapper-plugin-1.0.5.zip",
+        "activate": true
+    }
+)
+# → installs from URL, no manual upload needed
+```
+
+⚠️ Public URL exposes plugin source code globally — verify no secrets baked in (App Passwords, API keys, customer data).
+
+### Path C: SCP / SFTP (dev with SSH)
+
+```bash
+unzip wrapper-plugin-1.0.5.zip -d /tmp/wrapper-plugin/
+
+rsync -avz /tmp/wrapper-plugin/ user@host:/path/to/wordpress/wp-content/plugins/wrapper-plugin/
+
+# Activate via WP-CLI OR REST
+curl -u $U:$P -X POST "$SITE/wp-json/wp/v2/plugins/wrapper-plugin/wrapper-plugin" -d '{"status":"active"}'
+```
+
+### Verify deploy
+
+```bash
+# Check plugin version via debug endpoint (if wrapper exposes one)
+curl -u $U:$P "$SITE/wp-json/wrapper-mcp/v1/debug"
+# Expected: plugin_version matches your build
+
+# Check ability count
+curl -u $U:$P "$SITE/wp-json/wp-abilities/v1/abilities" | jq '[.[] | select(.name | startswith("wrapper-mcp/"))] | length'
+# Expected: N (your wrapper's ability count)
+
+# Test 1 ability via MCP (if mcp.public:true set)
+mcp__site-global__mcp-adapter-execute-ability(name: "wrapper-mcp/sample-ability", parameters: {...})
+# Expected: HTTP 200 success
+```
+
+### Rollback nếu deploy fails
+
+```bash
+# Path A/C: re-upload OLD version zip via same path
+# Path B: switch download_url back to previous version URL
+
+# Worst case (plugin causes 500 fatal):
+# wp-admin → Plugins → Deactivate wrapper-plugin
+# Or via REST: 
+curl -u $U:$P -X POST "$SITE/wp-json/wp/v2/plugins/wrapper-plugin/wrapper-plugin" -d '{"status":"inactive"}'
+```
+
+### Reusability
+
+Same pattern applies cho deploying ANY custom WP plugin (not just MCP wrappers). MCP install-plugin ability constraint = WordPress.org slug OR public URL → custom plugins forever require alternative deploy paths.

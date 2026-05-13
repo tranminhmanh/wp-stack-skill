@@ -153,6 +153,157 @@ def report(path_before, path_after):
 
 If a JPEG re-encode at q82 gives `+5%` instead of `-30%`, the source is already heavily compressed (probably q60–70 from a previous pass) → leave it alone. Re-encoding at the same low quality compounds artifacts without saving bytes.
 
+## WordPress `srcset` variants must be optimized as a set
+
+⚠️ **Trap**: Optimizing only the "original" upload file → browser still picks a `srcset` variant URL → Lighthouse flags both URLs as oversized. Each srcset variant is a separate file; each must be optimized.
+
+### Symptom
+
+```html
+<!-- WP auto-generated srcset (5 variants) -->
+<img src="https://site/hero-1920.webp"
+     srcset="https://site/hero-300w.webp 300w,
+             https://site/hero-768w.webp 768w,
+             https://site/hero-1024w.webp 1024w,
+             https://site/hero-1536w.webp 1536w,
+             https://site/hero-1920.webp 1920w">
+```
+
+Optimizing `hero-1920.webp` only → other 4 variants stay unoptimized → Lighthouse "Properly size images" audit lists `hero-768w.webp` because browser picks that for current viewport.
+
+### Browser picks 1 variant by DPR × viewport
+
+```
+Mobile (375px viewport, 2x DPR) → picks 768w variant (375 × 2 = 750, nearest)
+Tablet (768px, 1x) → 1024w
+Desktop (1280px, 1x) → 1536w
+Desktop retina (1440px, 2x) → 1920w
+```
+
+So Lighthouse audit URL depends on test device. Optimizing only the largest file leaves common mobile variants oversized.
+
+### Fix: optimize all variants together
+
+```python
+import os, glob
+from PIL import Image
+
+basename = "hero-stage-effects"
+src_dir = "/path/to/uploads/2024/05/"
+
+# Find all WP-generated variants of same basename
+variants = glob.glob(f"{src_dir}{basename}-*.webp") + glob.glob(f"{src_dir}{basename}.webp")
+
+for v in variants:
+    # Re-optimize each variant
+    im = Image.open(v)
+    im.save(v, "WEBP", quality=85, optimize=True)
+    print(f"Re-optimized: {v} ({os.path.getsize(v):,} bytes)")
+```
+
+### Pattern: pre-optimize before upload
+
+Trước khi upload, optimize **source file** at correct quality. WP auto-generates srcset variants from source → inherit optimization level. Saves the "after-the-fact" pain.
+
+### Cross-link với Lighthouse audit
+
+Lighthouse `total-byte-weight` audit lists URLs **actually fetched by browser** (current device + viewport). Use Largest Payloads từ audit → optimize specific URLs first → re-test on multiple device emulations để confirm.
+
+## Replicate API rate limit — >2 parallel = 429
+
+Launch 4 parallel calls với `&` + `wait` → 1 succeeds, 3 fail HTTP 429 immediately (NOT after N requests/min). Rate limit applies per-IP per-second window.
+
+```bash
+# WRONG — parallel
+for prompt in p1 p2 p3 p4; do
+    curl -X POST -d "{\"prompt\":\"$prompt\"}" "$REPLICATE_API" &
+done
+wait
+# → 1 success, 3 429 fails
+```
+
+### Fix: Sequential với sleep
+
+```bash
+# RIGHT — sequential với gap
+for prompt in p1 p2 p3 p4; do
+    curl -X POST -d "{\"prompt\":\"$prompt\"}" "$REPLICATE_API"
+    sleep 10  # 5-10s gap minimum
+done
+```
+
+### Cost note
+
+Failed 429 calls KHÔNG bị charge (request never reaches prediction creation). So retry is safe but wastes time.
+
+### Batch 2-by-2 max
+
+Nếu cần concurrency for speed:
+```bash
+# Batch of 2 parallel, then sleep 10s
+batch_size=2
+for batch in $(seq 0 $batch_size $total); do
+    for i in $(seq 0 1); do
+        idx=$((batch + i))
+        if [ $idx -lt $total ]; then
+            curl -X POST "$REPLICATE_API" &
+        fi
+    done
+    wait
+    sleep 10
+done
+```
+
+### Reusability
+
+Same rate-limit applies cho most AI image generation APIs (Replicate, DALL-E, Midjourney, Stable Diffusion Cloud). Pattern: max 2 parallel, sleep 10s between batches.
+
+## Flux 2 Pro aspect_ratio — 11 ratios only, no 21:9
+
+Flux 2 Pro model supports exactly 11 `aspect_ratio` values. Cannot pass arbitrary ratio (vd 21:9, 32:9 ultrawide):
+
+| Aspect ratio | Use case |
+|---|---|
+| 1:1 | Square (Instagram post, profile pic) |
+| 16:9 | Widescreen video / OG image |
+| 9:16 | Vertical video / Story / Reels |
+| 4:3 | Classic photo / TV legacy |
+| 3:4 | Vertical photo / portrait |
+| 3:2 | DSLR landscape |
+| 2:3 | DSLR portrait |
+| 4:5 | Instagram portrait |
+| 5:4 | Slight landscape |
+| 21:9 | ❌ NOT supported |
+| 32:9 | ❌ NOT supported |
+
+### Workaround cho 21:9 ultrawide
+
+```python
+# Generate at 16:9 (close enough) + crop to 21:9 via CSS object-position
+# OR
+# Use Flux Schnell / Dev (different aspect ratio support — verify per model)
+# OR
+# Generate at 16:9 + Photoshop / GIMP / `convert` crop center
+```
+
+CSS crop pattern:
+```css
+.hero-ultrawide {
+    aspect-ratio: 21 / 9;
+    overflow: hidden;
+}
+.hero-ultrawide img {
+    width: 100%;
+    height: auto;
+    object-fit: cover;
+    object-position: center 30%;  /* shift up for portrait subjects */
+}
+```
+
+### Cross-reference
+
+OG image generation typically uses 1.91:1 ratio (Facebook/Twitter spec). Flux's nearest is 16:9 (1.78:1) — visually close enough. See [`workflows/og-image-generation.md`](../workflows/og-image-generation.md) for OG-specific generation patterns.
+
 ## Cross-references
 
 - [`workflows/lighthouse-driven-optim.md`](../workflows/lighthouse-driven-optim.md) — pick targets via the audit, not by walking the tree

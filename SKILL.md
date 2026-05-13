@@ -88,6 +88,11 @@ Summary:
 | Astra mobile menu debugging (modes + iOS bfcache + 6-layer defense) | `astra-mobile-menu` + `elementor-mcp` (Custom Code Snippets) |
 | "Bug only on one site" — multi-factor cocktail | `workflows/multi-factor-bug-debug.md` |
 | Wrap a plugin's REST routes into MCP abilities | `workflows/build-mcp-wrapper-plugin.md` + `wp-abilities` |
+| Rank Math automation (bulk meta, redirects, SEO score) | `references/rankmath.md` + `references/wp-abilities.md` |
+| JSON-LD / Schema.org markup (LocalBusiness, Physician, YMYL) | `references/schema-jsonld.md` + `references/seo-checklist.md` |
+| Native HTML patterns (FAQ accordion, modal, map embed — zero JS) | `references/native-html-patterns.md` |
+| LiteSpeed cache stale-read fix (REST GET after write) | `workflows/litespeed-cache-mgmt.md` + `references/performance.md` |
+| Bulk content automation (idempotent prepend/append via REST) | `workflows/bulk-content-automation.md` + `references/wp-abilities.md` |
 
 ## Anti-patterns — STRICTLY avoid
 
