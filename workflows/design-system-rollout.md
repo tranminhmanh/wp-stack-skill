@@ -256,6 +256,156 @@ Layers 1+2 set correctly, but widgets render in the OLD brand because their sett
 
 For a green-field site without Phase 3 widget hardcoding to clean up, total drops to ~55 min.
 
+## Phase 5 — Visual rhythm standardization (custom-injected sections)
+
+Sau Phase 1+2, theme has consistent typography. Phase 3 audits hardcoded widget overrides. **Phase 5** addresses a subtler issue: **custom injected sections (via HTML widget, CRO sprint, mu-plugin) often miss the typography rhythm** — they use Elementor's default styles instead of brand fonts.
+
+### When to use Phase 5
+
+✅ Project injects custom HTML sections via Code Snippets / mu-plugin (vd CRO sections, FAQ accordion, ROI calculator, trust strips)
+✅ Sections render with mismatched typography vs brand sec-head pattern
+❌ Pure Elementor-builder site without custom injections — Phase 1-4 enough
+
+### Standard h2 pattern (matches brand sec-head)
+
+Lock h2 across injected sections với unified CSS rule:
+
+```css
+body.page-id-X .cha-INJECTED h2,    /* CV pattern */
+body .my-custom-section h2,          /* generic */
+body .injected-content h2 {
+    font-family: 'Oswald', sans-serif !important;   /* match brand heading */
+    font-weight: 700 !important;
+    letter-spacing: -0.5px !important;
+    line-height: 1.15 !important;
+    font-size: clamp(28px, 3.5vw, 40px) !important;
+}
+
+/* Gold underline accent matching brand sec-head */
+body.page-id-X .cha-INJECTED h2::after,
+body .my-custom-section h2::after {
+    content: '';
+    display: block;
+    width: 56px;
+    height: 3px;
+    background: var(--gold, #C8973F);
+    margin-top: 16px;
+    border-radius: 2px;
+}
+```
+
+### Eyebrow standardization
+
+Many brand-css patterns include uppercase "eyebrow" labels above h2. Lock pattern:
+
+```css
+.injected-content .eyebrow {
+    font-family: 'Roboto Mono', monospace;
+    font-size: 13px;
+    color: var(--gold, #C8973F);
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    margin-bottom: 8px;
+}
+```
+
+### Padding rhythm match section spacing
+
+```css
+body .my-injected-section {
+    padding: clamp(56px, 8vw, 96px) 24px;
+}
+```
+
+Matches brand-css default section padding. Tablet/mobile scale via clamp().
+
+### Why this matters cho cohesion
+
+Injecting 5 custom sections each with different typography → visual chaos. User feedback: "lộn xộn, không theo quy tắc nào".
+
+Unified Phase 5 CSS:
+- 100% typography consistency across injected + Elementor sections
+- Brand recognition preserved
+- Conversion lift (UX trust signal — site looks professionally designed)
+
+### Real-world result
+
+CV (Chacavungtau) Phase 5 applied → all CRO sections match brand sec-head. User feedback shifted: "trang trông thống nhất, professional".
+
+## Phase 6 — Canonical IA reorder via JS `insertBefore`
+
+Khi inject nhiều custom sections vào Elementor page, placement ban đầu thường suboptimal vì mỗi inject function chọn anchor khác nhau. Result: trang lộn xộn, không theo conversion funnel.
+
+### Pattern: 2-stage workflow
+
+**Stage 1 — Inject**: mỗi function chỉ tạo + đặt element ở vị trí "tạm" (anchor gần nhất hợp lý)
+
+**Stage 2 — Reorder**: 1 function `applyCanonicalOrder()` chạy LAST trong bootstrap, dùng `insertBefore` để di chuyển từng element về vị trí canonical theo funnel
+
+```javascript
+// At bootstrap (after all inject functions)
+function applyCanonicalOrder() {
+    // Define canonical order per page type
+    const order = ['hero', 'trust', 'pricing', 'roi', 'compare', 'minitesti', 'cam-ket', 'notes', 'final-cta'];
+
+    // Find anchor (final CTA OR footer start)
+    const anchor = findFinalCTA() || findFooterStart();
+    if (!anchor) return;
+
+    // Move each section to canonical position
+    order.reverse().forEach(id => {
+        const section = document.getElementById(`section-${id}`);
+        if (section && anchor !== section) {
+            anchor.parentNode.insertBefore(section, anchor);
+        }
+    });
+}
+
+function findFinalCTA() {
+    // Detect dark CTA section by text + button pattern
+    const darks = document.querySelectorAll('section.dark');
+    for (const d of darks) {
+        if (d.querySelector('a[href]')
+            && /sẵn sàng|đặt hàng|báo giá/i.test(d.textContent)
+            && !/©|chính sách/.test(d.textContent)) return d;
+    }
+    return null;
+}
+
+function findFooterStart() {
+    // Fallback when no final CTA — use footer column grid as anchor
+    return Array.from(document.querySelectorAll('section')).find(s =>
+        /Pháp lý.*Sản phẩm|Sản phẩm.*Khách hàng/i.test(s.textContent));
+}
+```
+
+### Benefits
+
+| Property | Without 2-stage | With 2-stage |
+|---|---|---|
+| **Idempotent** | ❌ Re-run swaps positions unpredictably | ✓ `insertBefore` di chuyển nhất quán, không duplicate |
+| **Decoupled** | ❌ Sửa order = edit inject code | ✓ Sửa order chỉ edit `applyCanonicalOrder()` |
+| **Stable** | ❌ Position-based fragile | ✓ ID-based hoặc text-pattern detection |
+| **Auditable** | ❌ Order phụ thuộc bootstrap timing | ✓ Single function = single source of truth |
+
+### Funnel canonical orders
+
+Define per page type. Examples:
+
+| Page type | Order |
+|---|---|
+| Pricing | Hero → Trust → Pricing → ROI → Compare → MiniTesti → Cam kết → Notes → Final CTA |
+| Story / About | Hero → Founder intro → Problem → Values → Differentiation → Workshop visual → Trust → Final CTA |
+| Contact / Liên hệ | Hero → Trust → 3 contact methods → NVKD profile → FAQ → Form → MiniTesti → Workshop info → Map → Footer |
+
+Document per page in `content_reference.md` or project workflow file.
+
+### When NOT to use
+
+- Pure Elementor builder pages (no custom inject) — order managed via builder UI
+- Sites without funnel mindset (pure portfolio, gallery)
+- When sections need conditional ordering (vd A/B test position) — use separate function with feature flag
+
 ## Cross-references
 
 - [`references/astra-customizer.md`](../references/astra-customizer.md) — Astra MCP tool reference (which setting key maps to what)

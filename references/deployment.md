@@ -401,3 +401,102 @@ Endpoints not prominently documented in WP core but extremely useful for automat
 - `Authorization: Basic <base64(user:apppassword)>` → App Password auth
 
 **Fallback chain when one path is broken**: REST `/wp/v2/media` → `/wp-admin/async-upload.php` → MCP `sideload_image` ability — three different code paths with different failure modes.
+
+## Plugin zip build cross-platform — forward-slash separator MUST
+
+Khi patch plugin local + cần deploy lên Linux/macOS WordPress host (production), zip phải có **forward-slash** separator `/` trong path entries. PowerShell `Compress-Archive` cmdlet default tạo zip với backslash `\` trên Windows — fails silently on Linux extract.
+
+**Symptom**: Plugin upload "success" via wp-admin → plugin không xuất hiện trong Plugins list → debug stuck.
+
+**Root cause**: Zip format spec allows both separators. Windows file system accepts both. Linux file APIs treat `\` as literal character → no nested folder created → files extracted as `plugin-name\plugin.php` (literal filename with backslash) → WordPress plugin scanner cannot find main file.
+
+```powershell
+# WRONG — Compress-Archive default
+Compress-Archive -Path "C:\plugin-source" -DestinationPath "out.zip"
+$a = [IO.Compression.ZipFile]::OpenRead("out.zip")
+$a.Entries | Select-Object FullName
+# FullName: plugin-source\readme.txt   ← BACKSLASH, fails on Linux
+```
+
+**Fix** — use `.NET System.IO.Compression.ZipArchive` với explicit forward slash:
+
+```powershell
+$srcDir = "C:\plugin-source"
+$dst = "C:\out.zip"
+if (Test-Path $dst) { Remove-Item $dst -Force }
+
+Add-Type -AssemblyName System.IO.Compression
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+
+$fs = [IO.File]::Create($dst)
+$zip = New-Object IO.Compression.ZipArchive($fs, [IO.Compression.ZipArchiveMode]::Create)
+
+# Files to include (top-level plugin folder name + files)
+$pluginFolderName = "plugin-name"
+$includeFiles = @("plugin-name.php", "readme.txt", "src/Class.php")
+
+foreach ($f in $includeFiles) {
+  $fullPath = Join-Path $srcDir $f
+  if (-not (Test-Path $fullPath)) { Write-Warning "MISSING: $fullPath"; continue }
+  $entryName = "$pluginFolderName/$f"   # ← FORWARD SLASH literal
+  $entry = $zip.CreateEntry($entryName, [IO.Compression.CompressionLevel]::Optimal)
+  $entryStream = $entry.Open()
+  $srcStream = [IO.File]::OpenRead($fullPath)
+  $srcStream.CopyTo($entryStream)
+  $srcStream.Close()
+  $entryStream.Close()
+}
+$zip.Dispose()
+$fs.Close()
+
+# Verify forward slash
+$a = [IO.Compression.ZipFile]::OpenRead($dst)
+$a.Entries | Select-Object FullName
+# Expect: plugin-name/plugin-name.php (forward slash, cross-platform safe)
+$a.Dispose()
+```
+
+**Alternative**: build zip trên Linux (CI/CD, WSL) — `zip` CLI defaults to forward slash. Or use Node.js `archiver` library, Python `zipfile` (defaults to forward slash on all platforms).
+
+**Real-world impact**: PKMT `audit/rankmath-mcp-2.0.5.zip` rebuild after Compress-Archive default created backslash separator zip. Manual upload qua wp-admin: silent fail trên Linux/LSWS host.
+
+## Windows + Git Bash path quirks — MSYS_NO_PATHCONV
+
+Git Bash trên Windows MSYS conversion mangles paths chứa `/` ở leading position (vd `/home/user/...`, `/wp-content/...`, `/wp-json/...`). Curl URL với absolute path arg → converted thành `C:\Program Files\Git\home\user\...` → 404 hoặc malformed request.
+
+**Symptom**:
+```bash
+$ curl -X POST "$WP_SITE/wp-json/wp/v2/posts/123" \
+    -d '{"slug":"/about-us/"}'
+# Sent as: -d '{"slug":"C:/Program Files/Git/about-us/"}'   ← MANGLED
+```
+
+**Fix options**:
+
+```bash
+# Option 1: env var prefix per command
+MSYS_NO_PATHCONV=1 curl -X POST "$WP_SITE/wp-json/..." -d '{"slug":"/about-us/"}'
+
+# Option 2: double-slash escape (Git Bash sees as single, prevents MSYS conversion)
+curl -X POST "$WP_SITE/wp-json/..." -d '{"slug":"//about-us/"}'
+
+# Option 3: set globally in .bashrc / .bash_profile
+export MSYS_NO_PATHCONV=1
+```
+
+**When MSYS mangles URLs**: only triggered when argument value matches `/literal/path/...` shape AND argument is **single-quoted vào bash**. Double-quoted often OK. JSON payloads với URL inside (vd Rank Math redirect `source: "/about-us/"`) MOST AFFECTED.
+
+**Workaround pattern cho REST script writing**:
+
+```bash
+#!/usr/bin/env bash
+# Always export at script top
+export MSYS_NO_PATHCONV=1
+
+# Now safe to use literal /path/ values
+SOURCE_URL="/about-us/"
+TARGET_URL="/gioi-thieu/"
+curl -X POST "$WP_API/redirects" -d "{\"source\":\"$SOURCE_URL\",\"target\":\"$TARGET_URL\"}"
+```
+
+**Reusability**: any Git Bash / MSYS2 / Cygwin on Windows when crafting URLs/JSON with path-like values. Linux/macOS bash, PowerShell, cmd.exe all unaffected.

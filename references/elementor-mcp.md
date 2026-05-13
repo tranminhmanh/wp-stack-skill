@@ -562,6 +562,113 @@ curl -u "$U:$APP_PW" -X POST "$SITE/wp-json/wp/v2/elementor_snippet" \
 - ⚠️ Conditions inherit from Elementor Theme Builder's UI — be aware of the same display-condition gotchas (see [`pitfalls.md`](pitfalls.md) "Element Pack Pro legacy `display_condition_list: subscriber`").
 - ⚠️ Multiple snippets at the same location + same priority → execution order is non-deterministic. Use distinct priorities to guarantee order.
 
+## Elementor 4.0 — `update-page-settings custom_css` field does NOT load on frontend
+
+**Symptom**: Set CSS via MCP `update-page-settings` field `custom_css`:
+```python
+update-page-settings(post_id=2926, settings={"custom_css": ".my-class { color: red; }"})
+```
+→ HTTP 200, save thành công vào `_elementor_page_settings` meta. **BUT** front-end KHÔNG load CSS này. View source → no `<style>` tag.
+
+**Root cause (suspected)**: Elementor 4.0 quirk — field `custom_css` saved to DB nhưng renderer KHÔNG output. Có thể migration 3.x → 4.x mất rule, hoặc field này yêu cầu Elementor Pro license verification fail silently.
+
+**Workaround — HTML widget với `<style>` block**:
+
+Inject CSS via `add-html` widget ở vị trí `position=0` của container đầu tiên (Hero):
+```python
+add-html(
+  parent_id="<hero-container-id>",
+  html_content='<style id="livesfx-design-system">/* CSS rules here */</style>'
+)
+```
+
+Browser xử lý `<style>` trong body như scoped CSS toàn page. Verified work cho:
+- Section padding rhythm
+- Card aspect-ratio constraints
+- Fluent Forms button override
+- FAQ accordion styling
+
+**Lesson**:
+- KHÔNG TIN field name "custom_css" trong page settings → verify front-end view-source sau mỗi set
+- HTML widget injection là workaround tin cậy hơn cho Elementor 4.0 hiện tại
+- Đặt `<style id="...">` để dễ track + debug trong DevTools
+
+**Alternative**: edit kit `custom_css` via `update-page-settings(kit_id, {custom_css: "..."})` — kit-level CSS DOES load (verified). Use kit for global tokens, HTML widget for page-specific overrides.
+
+## FontAwesome Pro-only icons render EMPTY box
+
+**Symptom**: Icon `champagne-glasses`, `cake-candles`, `champagne-glass`, etc. set trong Elementor → render empty box trên frontend.
+
+**Root cause**: Đây là icons Pro của Elementor (FA Pro license). Elementor render free version → không tìm thấy → silent empty.
+
+**Fix**: Dùng free alternatives:
+
+| Pro (broken) | Free (works) | Use case |
+|---|---|---|
+| `champagne-glasses` | `glass-cheers` | Cheers / celebration |
+| `cake-candles` | `birthday-cake` | Birthday / celebration |
+| `champagne-glass` | `glass-martini-alt` | Single drink |
+| `face-smile-beam` | `smile` | Happy face |
+| `gem` (some weights) | `diamond` | Premium / gift |
+
+**Verify**: Search [fontawesome.com/v5/free](https://fontawesome.com/v5/free) trước khi pick icon — confirm "Free" tag, not "Pro".
+
+**Alternative**: Use FontAwesome CDN with Pro license URL — but requires kit setup + license sync to site. Free FA tier covers 1500+ icons, usually enough.
+
+## Elementor section `background_image` lưu trong post-X.css, KHÔNG inline HTML
+
+**Symptom**: Sau khi `batch_update` set `background_image` cho hero section, `grep` HTML không tìm thấy URL ảnh. Tưởng là chưa apply.
+
+**Reality**: Elementor render bg-image ra file `wp-content/uploads/elementor/css/post-{ID}.css` (external stylesheet), NOT inline `<style>` trong HTML.
+
+**Verify đúng cách**:
+```bash
+# Fetch post CSS file riêng
+curl -sL "https://site/wp-content/uploads/elementor/css/post-43.css" | grep <url-pattern>
+
+# Hoặc DevTools Computed styles trên element
+```
+
+**Lesson**: Khi audit Elementor visual settings (background, padding via responsive units, animation), đừng grep HTML — fetch post-X.css file riêng. Inline HTML chỉ chứa CSS classes, không actual styles.
+
+**Architecture summary**:
+- `_elementor_data` (DB meta) → JSON với widget settings
+- Elementor renderer → generate `wp-content/uploads/elementor/css/post-{ID}.css` (external stylesheet)
+- Frontend HTML → reference post-X.css via `<link>` + classes only
+
+## Diagnostic technique: demote `header_size` to find H1 duplication source
+
+**Use case**: Frontend renders 2+ H1 tags on same page. Em phải xác định source:
+- (A) Cùng widget render 2 lần (recursion / cache bug)
+- (B) 2 different widget instances
+- (C) Widget + theme/template overlay
+
+**Pattern**: tạm thời update 1 widget với `header_size: "h2"`. Sau đó re-fetch frontend, count H1 vs H2.
+
+```python
+# Step 1: Identify candidate widget rendering H1
+find-element(post_id=8004, widget_type="theme-post-title")  # returns widget id 2f0a7929
+
+# Step 2: Demote temporarily
+update-widget(post_id=8004, element_id="2f0a7929", settings={"header_size": "h2"})
+
+# Step 3: Re-fetch + count
+# curl -s site/page?cb=$(date +%s) | grep -c '<h1'  → check H1 count
+# curl -s site/page?cb=$(date +%s) | grep -c '<h2.*"Title text"'  → check H2 count
+```
+
+**Interpretation**:
+
+| Result | Conclusion |
+|---|---|
+| H1=0, H2=2 với same text | Same widget renders twice (recursion / cache) — investigate `theme-post-content` self-recursion or render layer |
+| H1=1, H2=1 với same text | 2 widget instances exist — find second via `find-element` widget_type="heading" |
+| H1=1, no H2 với text | 1 H1 from updated widget, other H1 from elsewhere (template overlay, plugin inject, Astra builtin) |
+
+**Step 4**: Revert widget back to `header_size: "h1"` after diagnosis. Test takes ~30 seconds.
+
+**Reusability**: Universal cho any heading-tag-flexible widget (Elementor heading, theme-post-title, Astra Customizer site-title). Apply when seeing render multiplicity that data doesn't explain.
+
 ## WP Admin upload (`async-upload.php`) vs REST `/wp/v2/media`
 
 The two upload endpoints take **different code paths**:

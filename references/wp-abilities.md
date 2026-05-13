@@ -440,6 +440,63 @@ The validator runs **before** schema `default` is applied → even `default = ne
 
 **Recommendation**: avoid zero-input abilities entirely. Give every ability at least one optional property (`since`, `limit`, etc.) so users never hit the dummy-input footgun.
 
+### `meta.mcp.public:true` REQUIRED for MCP Adapter dispatch (separate from `show_in_rest`)
+
+The framework has **two independent visibility flags** that both must be set for end-to-end MCP usage. Setting one does NOT imply the other:
+
+| Flag | Effect when `true` | REST endpoint affected |
+|---|---|---|
+| `meta.show_in_rest` | Ability listed in `/wp-abilities/v1/abilities` (registry) | Legacy REST `/wp-abilities/v1/...` |
+| `meta.mcp.public` | Ability exposed via MCP Adapter `discover-abilities` + executable via `execute-ability` | MCP Adapter `/wp-json/mcp/<server>` |
+
+**Symptom of missing `mcp.public:true`** — ability registered fine, visible via REST registry, but MCP Adapter `execute-ability` rejects with:
+```
+Ability "rankmath-mcp/list-redirections" is not exposed via MCP (mcp.public!=true)
+```
+
+**Why both flags exist separately**: MCP Adapter v0.5.0 filters abilities by an opt-in flag so plugin authors can register internal abilities (used by other PHP code) without exposing them as MCP tools to external clients. The asymmetric design is intentional but undocumented in the MCP Adapter README.
+
+**Correct helper pattern** — bake BOTH flags into every meta function:
+
+```php
+// ✅ CORRECT
+function rmcp_meta_read(): array {
+    return [
+        'annotations'  => [ 'readonly' => true, 'destructive' => false, 'idempotent' => true ],
+        'show_in_rest' => true,
+        'mcp'          => [ 'public' => true, 'type' => 'tool' ],
+    ];
+}
+
+function rmcp_meta_write( bool $destructive = false ): array {
+    return [
+        'annotations'  => [ 'readonly' => false, 'destructive' => $destructive, 'idempotent' => true ],
+        'show_in_rest' => true,
+        'mcp'          => [ 'public' => true, 'type' => 'tool' ],
+    ];
+}
+```
+
+`mcp.type` accepts `"tool"` (default — exposes as callable MCP tool), `"resource"`, or `"prompt"` per MCP spec. Most write/read abilities want `"tool"`.
+
+**Fallback REST direct** — when you can't patch the plugin (third-party code, immediate need), bypass MCP Adapter entirely:
+
+```bash
+# Readonly: GET, dùng input[k]=v nested array syntax
+curl -u $U:$P "https://site/wp-json/wp-abilities/v1/abilities/<name>/run?input[limit]=200"
+
+# Write: POST với body wrapper {"input": {...}}
+curl -u $U:$P -X POST -H 'Content-Type: application/json' \
+  "https://site/wp-json/wp-abilities/v1/abilities/<name>/run" \
+  -d '{"input": {"sources":[...], "destination":"..."}}'
+```
+
+REST direct path always works regardless of `mcp.public` — it goes through the WP Abilities REST controller, not the MCP Adapter filter.
+
+**Plugin design choice**: some plugins intentionally omit `mcp.public:true` (admin-only ops, internal abilities). When wrapping a third-party plugin's REST API into your own MCP-discoverable abilities (eg. rankmath-mcp wrapping Rank Math Link Genius REST), explicitly set both flags so end-users get autocomplete + dispatch via Claude/MCP clients.
+
+Discovered: PKMT session 2026-05-13, insight #082 (`rankmath-mcp` v2.0.4 missed flag → patched v2.0.5).
+
 ## Liên quan
 
 - [`mcp-architecture.md`](mcp-architecture.md) — vì sao endpoint MCP server tách biệt khỏi abilities registry

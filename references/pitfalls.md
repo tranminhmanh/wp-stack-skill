@@ -1426,3 +1426,283 @@ This isn't a bug in Elementor or the host — it's the **cocktail** of widget he
 - LiteSpeed CCSS staleness on shared host (see "LiteSpeed CCSS" above)
 
 All have the same shape: shared resource + concurrency → silent 500 / silent fail. Detection requires the "multi-factor cocktail" methodology (see [`workflows/multi-factor-bug-debug.md`](../workflows/multi-factor-bug-debug.md)).
+
+## CSS specificity battles — `body.page-id-X` selector wins over plain `body`
+
+Khi mu-plugin chứa rule như:
+```css
+body.page-id-38 .pricing-grid .price-card.featured {
+    background: linear-gradient(white, gold) !important;
+}
+```
+
+Override mọi rule mới mà KHÔNG có cùng selector chain. Ngay cả rule mới với `body .pricing-grid .price-card.featured !important` (specificity 0,3,1) **vẫn thua** (0,4,1) của `body.page-id-X` selector. `!important` chỉ tie-break khi specificity equal.
+
+**Specificity ladder**:
+
+| Selector | Specificity score | Notes |
+|---|---|---|
+| `.pricing-grid .featured` | 0,2,0 | base |
+| `body .pricing-grid .featured` | 0,2,1 | + body element |
+| `body .pricing-grid .price-card.featured` | 0,3,1 | + price-card class |
+| `body.page-id-38 .pricing-grid .price-card.featured` | 0,4,1 | + page-id-38 class on body |
+| `body.page-id-38 .pricing-grid .price-card.featured.special` | 0,5,1 | absurd specificity ladder |
+
+`body.page-id-X` win even without `!important`. With `!important`, only matching specificity rules can override (must be equal or higher AND also `!important`).
+
+### Symptoms
+
+- Custom CSS qua page-builder "Custom CSS" panel doesn't apply
+- Inline `<style>` blocks injected via HTML widget ignored
+- Theme Customizer additional CSS works but feels brittle
+- Different pages behave differently — same rule applies on some pages, fails on others
+
+### Diagnostic
+
+In DevTools → Inspector → Computed pane → click crossed-out rule → see overriding rule path. Page-id selectors usually win.
+
+```javascript
+// Quick console check
+$0.matches('body.page-id-38 *')  // returns true if affected by page-id rule
+```
+
+### Fix strategies
+
+**Strategy 1 (preferred): Edit at source**
+- Locate mu-plugin / theme functions.php / Code Snippet defining the page-id rule
+- Update there. Avoid override war.
+
+**Strategy 2: Match the exact selector chain**
+```css
+/* Override needs SAME specificity ladder */
+body.page-id-38 .pricing-grid .price-card.featured {
+    background: white !important;
+}
+```
+
+**Strategy 3: Scope to NOT match the page-id**
+```css
+/* Apply only to OTHER pages, leaving page-id-38 to its mu-plugin rule */
+body:not(.page-id-38) .pricing-grid .price-card.featured {
+    background: gold;
+}
+```
+
+**Strategy 4 (defensive, last resort): Inline style attribute (specificity 1,0,0,0)**
+```html
+<div class="price-card featured" style="background: white !important">...</div>
+```
+Inline beats all class-based selectors regardless of class count.
+
+### Anti-pattern
+
+❌ Adding NEW page-id rule (vd `body.page-id-99 ...`) when fixing wrong page → multiplies the problem. Future bug compounds.
+
+✅ Always check if rule should be **page-aware** (yes → use page-id) or **global** (no → never use page-id).
+
+### Anchor when designing rules
+
+The `body.page-id-X` selector is **single source of truth** for page-aware CRO injection. Always edit at source. Never add competing rules from elsewhere.
+
+**Reusability**: applies cho mọi WP site có per-page CSS injection (Elementor Custom CSS, Astra Customizer additional CSS, mu-plugin per-post rules, page-builder custom CSS panels).
+
+## `theme-post-content` widget trên page hub = self-recursion render
+
+⚠️ **Critical SEO bug**: Page chứa Elementor Pro `theme-post-content` widget (id 33b2a75c trong DB) render duplicate content — frontend trả 2 H1, 2 instances cho mỗi widget bên trong container chứa `theme-post-content`. Data sạch (single widget instance trong `_elementor_data`), nhưng render multiplicity = 2.
+
+### Symptom
+
+- Frontend grep `<h1` returns 2 (page title appears twice)
+- View source: full Elementor structure block xuất hiện 2 lần (~50% page size bloat)
+- Raw `_elementor_data` JSON shows 1 widget instance only
+- LiteSpeed cache hit/miss doesn't affect (recursion happens before cache write)
+
+### Root cause
+
+Widget `theme-post-content` (Elementor Pro Theme Builder widget) calls WordPress `the_content()` filter. Khi widget đặt **trên page hub** (page nội dung chính của hub, không phải single post), `the_content()` evaluates **page content of itself** → returns full Elementor structure → renders all child widgets again, including the parent `theme-post-title` (the H1). Elementor's render guard limits recursion to depth 2 → exactly **2 instances** mỗi widget.
+
+Configuration sai: `theme-post-content` ý dùng trong **Theme Builder Single Post template** (apply lên POSTS, render `the_content()` của post being viewed). Đặt trực tiếp trên PAGE = self-render loop.
+
+### Detection
+
+```python
+# Check via REST
+import requests
+r = requests.get(f"{site}/wp-json/wp/v2/pages/{pid}?context=edit&_fields=content", auth=auth)
+content_rendered = r.json()['content']['rendered']
+
+# Look for duplicate `<div class="elementor-element elementor-element-{container_id}` blocks
+import re
+duplicates = re.findall(r'data-elementor-id="(\d+)"', content_rendered)
+counts = {}
+for d in duplicates:
+    counts[d] = counts.get(d, 0) + 1
+print(counts)  # If any value > 1, recursion happening
+
+# Or scan for theme-post-content widget on a static page
+r = requests.get(f"{site}/wp-json/wp/v2/pages/{pid}?context=edit&_fields=meta._elementor_data", auth=auth)
+data = r.json()
+if 'theme-post-content' in str(data):
+    print("WARN: theme-post-content widget detected. If this is a hub page (not Theme Builder single template), remove.")
+```
+
+### Fix
+
+Remove widget `theme-post-content` từ Elementor structure of page hub.
+
+```python
+# Via Elementor MCP
+elementor-mcp-find-element(post_id=8004, widget_type="theme-post-content")
+# → returns widget_id
+
+elementor-mcp-remove-element(post_id=8004, element_id="33b2a75c")
+```
+
+### Verification
+
+```bash
+# Re-fetch frontend
+curl -s "${SITE}/${PAGE_SLUG}/?cb=$(date +%s)" | grep -c '<h1'
+# Expected: 1 (was 2)
+
+# Check page size reduction (recursive content gone)
+curl -sI "${SITE}/${PAGE_SLUG}/" | grep -i content-length
+# Expected: smaller (PKMT case: 330KB → 313KB, -17KB)
+```
+
+### When `theme-post-content` IS appropriate
+
+Use ONLY trong **Theme Builder template** với:
+- Template type: Single Post / Single Page / Archive
+- Conditions: applied to posts (not the template page itself)
+- The template renders `the_content()` of the post being viewed, not of the template
+
+Page hub (vd `/bai-viet/`, `/tin-tuc/`) should NOT contain `theme-post-content` widget — they list child posts, not display their own content.
+
+### Reference fix
+
+PKMT 2026-05-13 evening: removed widget 33b2a75c from `/bai-viet/` (post 8004). H1 dup gone, page weight -17KB, hierarchy clean.
+
+**Diagnostic technique**: see [`elementor-mcp.md`](elementor-mcp.md) "Diagnostic technique: demote `header_size` to find H1 duplication source" để xác định same-widget-2x vs different-widgets-2-instances vs template-overlay.
+
+## Brand-css generic class collisions với Elementor
+
+Khi brand designed CSS từ HTML mockup imports class names trùng với Elementor (vd `.container`, `.row`, `.col`, `.hero`, `.section`), CSS rules áp dụng nhầm vào Elementor sections that happen to use same class names.
+
+### Symptom
+
+- Hero h1 wrap quá nhiều dòng (5+ lines cho text dài bình thường)
+- Nested `.elementor-container` rendered narrower than expected
+- 50% width instead of 100% width unexpected
+
+### Example bug
+
+Brand-css legacy:
+```css
+.hero .container { display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 60px; }
+```
+Designed cho HTML mockup với 2 children (text + visual). Khi trong Elementor inner section chỉ có 1 column, rule grid vẫn fire → child chiếm cột đầu 1.1/(1.1+0.9) ≈ 55% width.
+
+### Fix
+
+**Strategy 1: Override với high-specificity selector matching exact context**:
+```css
+body section.hero.hero-secondary section.container {
+    display: block !important;
+    grid-template-columns: 1fr !important;
+    gap: 0 !important;
+}
+```
+
+**Strategy 2: Edit brand-css source với namespaced selector**:
+```css
+/* WRONG — too generic, collides with Elementor */
+.hero .container { display: grid; ... }
+
+/* RIGHT — namespace với mockup-specific prefix */
+.hero-mockup .container { display: grid; ... }
+/* OR */
+.hero[data-component="mockup"] .container { display: grid; ... }
+```
+
+**Strategy 3: Attribute selector tránh class war**:
+```css
+.hero > [class*="container"]:not(.elementor-container) { display: grid; ... }
+```
+
+### Common generic classes to AVOID in brand-css
+
+Following classes are **heavily used by Elementor** — never use as a brand-css rule target without namespace:
+
+| Class | Elementor usage |
+|---|---|
+| `.container` | Section boxed wrapper |
+| `.row` | Column row (legacy Section/Column) |
+| `.col` | Column inside row |
+| `.section` | Section wrapper |
+| `.btn` | Button widget shortcut |
+| `.box` | Various widget boxes |
+| `.grid` | Posts grid + portfolio grid |
+| `.card` | Pricing table, testimonial |
+| `.wrapper` | Form, search, slider wrappers |
+| `.inner` | Inner sections, container child |
+
+### Lessons
+
+- Brand-css designed cho HTML mockup KHÔNG nên dùng generic class names
+- Namespace cứng prefix per brand (vd `.cha-`, `.lsfx-`, `.pkm-`) tránh war
+- Always verify in DevTools Computed pane sau khi import brand-css vào Elementor site
+
+## Default theme dark/light variant invisible on light parent
+
+Khi brand-css designed cho dark background (vd cards `color: var(--cream)` for dark navy parent), inject vào Elementor section without `.dark` class → cards render `cream-on-cream` invisible to user.
+
+### Example
+
+Brand-css mặc định:
+```css
+.strengths-grid .strength {
+    color: var(--cream, #F7F3E9);  /* designed for dark parent */
+    background: transparent;
+}
+```
+
+Section without `.dark` → light cream background → invisible cream text.
+
+### Fix immediate (per-instance)
+
+Add `dark` class vào Elementor section:
+```python
+update-element(
+    post_id=37, element_id="dcdb556",
+    settings={"css_classes": "dark", "background_color": "#0B3D5C"}
+)
+```
+
+### Fix defensive (site-wide via mu-plugin CSS)
+
+Thêm safety rule cho cards trên light bg:
+```css
+.elementor-section:not(.dark) .strengths-grid .strength {
+    background: rgba(247, 243, 233, 0.6);  /* light cream tinted bg */
+    color: var(--navy, #0B3D5C);            /* dark text */
+}
+
+.elementor-section:not(.dark) .strengths-grid .strength h3,
+.elementor-section:not(.dark) .strengths-grid .strength h4 {
+    color: var(--navy, #0B3D5C) !important;
+}
+```
+
+### Audit pattern
+
+Khi import brand-css designed cho specific theme variant (dark / light / brand-color):
+1. List all card-like classes assuming the variant: `strengths-grid`, `pain-grid`, `commit-grid`, `pricing-grid`, `card`, `testimonial`
+2. Write defensive CSS for inverse variant
+3. Add to mu-plugin master-css.php (outlives theme/plugin updates)
+
+### Lessons
+
+- Brand-css assuming theme variant = source of "invisible content" bugs
+- Defensive CSS using `:not()` is robust + maintenance-free
+- Better than per-page `.dark` class injection (which requires Elementor section editing)

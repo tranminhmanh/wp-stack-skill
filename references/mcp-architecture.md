@@ -75,6 +75,18 @@ Quy ước đặt tên: `{plugin-slug}-server`. Tested 2026-05-10:
 
 Khi user cài plugin MCP mới, kiểm tra `/wp-json/mcp` để biết tên endpoint mới register.
 
+## MCP Adapter filters abilities by `meta.mcp.public:true`
+
+A subtle but critical filtering rule: MCP Adapter v0.5.0 only exposes (via `discover-abilities` + `execute-ability`) abilities whose registration meta contains `'mcp' => ['public' => true]`. This is **independent** of `meta.show_in_rest:true` (which only controls REST registry visibility).
+
+Symptom when the flag is missing:
+```
+mcp-adapter-execute-ability(name: "<plugin>/<ability>", parameters: {...})
+→ Error: Ability "<plugin>/<ability>" is not exposed via MCP (mcp.public!=true)
+```
+
+The ability still works via direct REST `/wp-abilities/v1/abilities/<name>/run` — it's only blocked at the MCP transport layer. See [`wp-abilities.md`](wp-abilities.md) section "`meta.mcp.public:true` REQUIRED for MCP Adapter dispatch" for the helper pattern + fallback REST direct.
+
 ## Verifying endpoint mapping
 
 ```bash
@@ -88,6 +100,55 @@ curl -u "$USER:$APP_PW" "https://<site>/wp-json/mcp" | jq '.routes | keys'
 curl -u "$USER:$APP_PW" "https://<site>/wp-json/wp-abilities/v1/abilities" \
   | jq -r '.[].name' | awk -F'/' '{print $1}' | sort | uniq -c
 ```
+
+## REST registry pagination caveat — `per_page` cap on abilities list
+
+WP-Abilities REST endpoint `/wp-json/wp-abilities/v1/abilities` default returns **100 abilities per page**. Sites với 100+ abilities registered (vd Astra + mcp-wp + plugin mcp + custom abilities = often 200+) → page 2 missing data when client doesn't paginate.
+
+### Symptom
+
+```bash
+# Client list abilities, expects all
+curl -u $U:$P "https://site/wp-json/wp-abilities/v1/abilities" | jq '. | length'
+# 100 ← capped at default
+
+# Reality: site has 194 abilities total
+# Page 2 missing 94 abilities
+```
+
+### Common consequences
+
+- npm stdio bridge (`mcp-wp-abilities`) hardcodes `per_page=100` → silent miss
+- Custom MCP clients querying registry as setup-once not seeing full toolset
+- Documentation generators dump incomplete ability catalog
+
+### Fix
+
+```bash
+# Explicit per_page override (most servers allow up to 200-300)
+curl -u $U:$P "https://site/wp-json/wp-abilities/v1/abilities?per_page=200"
+
+# Or paginate
+for page in 1 2 3; do
+    curl -u $U:$P "https://site/wp-json/wp-abilities/v1/abilities?per_page=100&page=$page"
+done | jq -s 'add | unique_by(.name) | sort_by(.name)'
+```
+
+### Verify total via different endpoint
+
+MCP Adapter `discover-abilities` qua MCP protocol bypass REST pagination — returns all `mcp.public:true` abilities trong 1 call:
+
+```javascript
+mcp__site-global__mcp-adapter-discover-abilities()
+// → all abilities với mcp.public:true (subset of registry, but reliable count)
+```
+
+Compare cả 2 sources để get full picture:
+- REST `/wp-abilities/v1/abilities?per_page=200` = `show_in_rest:true` abilities (full schema)
+- MCP `discover-abilities` = `mcp.public:true` abilities (basic info)
+- Union = total registered
+
+Em script `audit/cache_abilities.ps1` (xem [`workflows/litespeed-cache-mgmt.md`](../workflows/litespeed-cache-mgmt.md) cross-link OR `references/wp-abilities.md` cross-link) implements 2-pass fetch.
 
 ## Liên quan
 

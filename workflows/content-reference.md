@@ -159,6 +159,113 @@ Each project gets its own `content_reference.md`. The pattern is the same; the c
 
 ❌ **One-shot file**: writing content_reference.md once and never updating. Brand facts change. The file MUST be a living document, with edits per fact change.
 
+## Brand fact audit cross-page khi update
+
+Khi update 1 brand fact (founding year, team size, address, phone, awards), audit toàn site trước commit để bắt drift. Brand facts sống ở nhiều nơi:
+
+- Counter widget homepage (có thể có nhiều widget IDs khác nhau)
+- About-us / Giới thiệu page heading + body
+- Footer copyright auto-update
+- Schema markup (LocalBusiness.foundingDate, Organization.foundingDate)
+- Meta tags description (Rank Math / Yoast custom)
+- Social profile bio (sync separately)
+- Email signature template (sync separately)
+- llms.txt (auto-gen, may lag behind manual updates)
+
+Update 1 nơi không trigger update các nơi khác → drift accumulates.
+
+### Story (real PKMT-adjacent example)
+
+CLAUDE.md / content_reference.md ghi "founded 2014, 12 năm kinh nghiệm" (verified). Nhưng:
+- Homepage counter vẫn show "2013 — 10 năm" (cũ 1 year)
+- About-us page heading vẫn show "Thành lập 2013"
+- Schema LocalBusiness `foundingDate: "2013-01-01"` (cũ)
+
+User chỉ phát hiện sau khi visit page → ask "tại sao mâu thuẫn?".
+
+### Audit workflow
+
+**Step 1: Grep toàn site cho fact cũ + variants**
+
+```bash
+# Get full URL list từ sitemap
+curl -s https://example.com/sitemap_index.xml | grep -oP 'https://[^<]+\.xml' | \
+  xargs -I {} curl -s {} | grep -oP 'https://[^<]+' > /tmp/urls.txt
+
+# Search each URL for old fact pattern
+while read url; do
+    content=$(curl -s "$url")
+    if echo "$content" | grep -qE '(2013|2022|50\+|cũ-fact)'; then
+        echo "$url"
+        echo "$content" | grep -oE '(2013|2022|50\+|cũ-fact)' | sort -u | sed 's/^/  /'
+    fi
+done < /tmp/urls.txt
+```
+
+**Step 2: List all locations chứa fact cần update**
+
+Group findings by source type:
+
+| Location type | URLs / IDs | Old value | Action |
+|---|---|---|---|
+| Counter widgets | Homepage widget b72d1b2, footer 6d1f7f4 | "2013", "10 năm" | Update via MCP |
+| Heading text | /about-us, /gioi-thieu | "Thành lập 2013" | Edit Elementor heading widget |
+| Schema markup | Homepage LocalBusiness JSON-LD | `foundingDate: "2013-01-01"` | Edit HTML widget với `<script>` tag |
+| Meta description | Rank Math meta `_rank_math_description` | "Phòng khám 10 năm..." | REST update |
+| Footer copyright | Astra footer builder copyright element | "© 2014-2023" | Astra Customizer or footer builder |
+
+**Step 3: Update ALL in 1 batch — không từng cái**
+
+```bash
+# Use MCP / REST API to update all detected locations in single session
+# Don't update homepage today, schema tomorrow — drift period exposes inconsistency to users
+
+# Track in audit log
+echo "$(date): updated 2013→2014 in 5 locations" >> audit/brand_fact_updates.log
+```
+
+**Step 4: Verify post-update**
+
+```bash
+# Re-grep to confirm 0 remaining occurrences
+while read url; do
+    content=$(curl -s "$url?cb=$(date +%s)")  # cache-bust
+    if echo "$content" | grep -qE '(2013|10 năm)'; then
+        echo "STILL FOUND: $url"
+    fi
+done < /tmp/urls.txt
+# Expect: no output (all updated)
+```
+
+**Step 5: Update content_reference.md với fact mới + mark cũ là OUTDATED**
+
+```markdown
+## Conflicts table
+
+| Fact | V0 (old) | V1 (current) | Updated date | Reason |
+|---|---|---|---|---|
+| Founding year | 2013 | 2014 | 2026-05-13 | Source: business license cert |
+| Team size | 10 | 12 chuyên môn + 8 hỗ trợ | 2026-05-13 | Q1 2026 hire batch |
+```
+
+### Cadence
+
+Audit cross-page mỗi 3 tháng để catch drift. Common drift sources:
+- WordPress auto-update plugin pushes new default schema
+- Theme update overwrites Customizer settings
+- AI-generated content (FOXAI, GPT writers) introduces incorrect facts
+- Manual edit to 1 page without updating others
+
+### Reusability
+
+Same workflow applies cho any "fact that lives in multiple places":
+- Pricing changes (homepage banner + product page + service page + footer + email signature)
+- Contact info update (3 phone numbers? 2 addresses? Hours?)
+- Award / certification addition
+- Partner logo additions
+
+The core principle: **update everywhere in 1 batch, verify cross-page, log to canonical SoT (content_reference.md)**.
+
 ## Cross-references
 
 - [`templates/content-reference-template.md`](../templates/content-reference-template.md) — starter template (copy + fill in per project)

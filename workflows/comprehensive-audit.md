@@ -290,3 +290,36 @@ Schedule via cron / GitHub Action for trendlines.
 - [`references/a11y-debugging.md`](../references/a11y-debugging.md) — fix patterns when audit flags a11y issues
 - [`references/pitfalls.md`](../references/pitfalls.md) — Element Pack subscriber filter, WP version exposure, plugin redundancy
 - [`references/seo-checklist.md`](../references/seo-checklist.md) — Rank Math meta + schema setup
+
+## Audit Rank Math features — Link Genius backend = REST routes (not abilities)
+
+When auditing Rank Math features (Link Genius/Link Builder for internal linking automation, focus keyword status, redirects, schema templates), be aware:
+
+**Rank Math Link Genius backend = REST routes**, NOT WP Abilities Framework abilities. Endpoints:
+- `/wp-json/rankmath/v1/links/posts` — list posts with link stats
+- `/wp-json/rankmath/v1/links/{id}` — per-post incoming/outgoing links
+- `/wp-json/rankmath/v1/links/posts-stats` — site-wide stats
+- `/wp-json/rankmath/v1/links/links-stats` — top linked posts
+
+Direct REST audit (no plugin needed):
+```bash
+curl -u $U:$P "$SITE/wp-json/rankmath/v1/links/posts-stats?per_page=200" \
+  | jq '{total: .total, orphan: [.posts[] | select(.is_orphan==true)] | length, average_score: ([.posts[].seo_score] | add / length)}'
+```
+
+To MCP-discover Link Genius features, wrap REST routes into abilities (see [`build-mcp-wrapper-plugin.md`](build-mcp-wrapper-plugin.md)). Without wrapping, Claude/MCP clients can't auto-discover — but direct REST works fine for one-off audits.
+
+## Rank Math `rank_math_*` meta NOT exposed via REST default
+
+When auditing meta completeness (title, description, focus_keyword), `PATCH /wp/v2/pages/{id} {meta: {rank_math_*: "..."}}` returns HTTP 200 but **silent ignore** — Rank Math doesn't register `show_in_rest=true` for these meta keys.
+
+Workarounds (per audit need):
+- **Read in edit context**: `/wp-json/wp/v2/pages/{id}?context=edit&_fields=meta` — meta visible for admin/editor auth
+- **Bulk update during audit**: One-shot mu-plugin (custom REST endpoint with token guard, calls `update_post_meta` directly) — see [`../references/rankmath.md`](../references/rankmath.md) "`rank_math_*` post meta NOT exposed via REST default"
+- **Permanent wrapper**: `rankmath-mcp` plugin pattern — see [`build-mcp-wrapper-plugin.md`](build-mcp-wrapper-plugin.md)
+
+Audit step — verify access path before bulk update:
+```bash
+curl -u $U:$P "$SITE/wp-json/wp/v2/pages/123?context=edit&_fields=meta" | jq '.meta | keys[]' | grep rank_math
+# If visible → read access OK, but write needs one-shot
+```
