@@ -611,7 +611,7 @@ Browser xử lý `<style>` trong body như scoped CSS toàn page. Verified work 
 | `face-smile-beam` | `smile` | Happy face |
 | `gem` (some weights) | `diamond` | Premium / gift |
 
-**Verify**: Search [fontawesome.com/v5/free](https://fontawesome.com/v5/free) trước khi pick icon — confirm "Free" tag, not "Pro".
+**Verify**: Search [fontawesome.com/search?o=r&m=free](https://fontawesome.com/search?o=r&m=free) trước khi pick icon — confirm "Free" tag, not "Pro". (FontAwesome restructured the legacy `/v5/free` URL to a search-based one; see [`pitfalls.md`](pitfalls.md) "Pro FontAwesome icons render empty on Free Elementor" — fixed in v0.5.0, regression reintroduced + corrected in v0.7.2.)
 
 **Alternative**: Use FontAwesome CDN with Pro license URL — but requires kit setup + license sync to site. Free FA tier covers 1500+ icons, usually enough.
 
