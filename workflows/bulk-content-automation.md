@@ -13,7 +13,7 @@ Khi cần prepend/append/modify HTML content trên 50-500+ posts trong 1 batch (
 Every bulk-injected HTML block phải chứa **unique CSS class marker**: `{project}-{purpose}-{slug}` pattern.
 
 ```python
-MARKER = 'pkm-pillar-uplink-phu-khoa'  # unique per pillar, project-prefixed
+MARKER = 'acme-pillar-uplink-topic-slug'  # unique per pillar, project-prefixed
 
 CALLOUT = f'''<div class="{MARKER}" style="background:#fff5f8;border-left:4px solid #FF4E88;padding:16px;margin-bottom:24px;">
 <p>📌 <strong>Đây là bài thuộc chuyên đề Phụ khoa.</strong>
@@ -68,7 +68,7 @@ Example plan markdown:
 ```markdown
 ## Cluster Up-link Phụ khoa
 
-- Marker: `pkm-pillar-uplink-phu-khoa`
+- Marker: `acme-pillar-uplink-topic-slug`
 - Target: posts trong category `phu-khoa` (id=446) + tag `kham-phu-khoa` (id=89)
 - Excluded: pillar page itself (4630), draft/trash status
 - Position: prepend
@@ -108,7 +108,7 @@ for p in posts:
 ### Stage 3: Execute bulk with marker check
 
 ```python
-MARKER = 'pkm-pillar-uplink-phu-khoa'
+MARKER = 'acme-pillar-uplink-topic-slug'
 CALLOUT = '''<div class="{marker}" style="...">
 <p>📌 ... <a href="{pillar_url}">{cta_text}</a></p>
 </div>
@@ -209,7 +209,7 @@ The marker class makes regex match easy + reliable (no positional guessing).
 
 ## Real-world results
 
-PKMT 2026-05-13 test: 69 cluster posts processed across 3 pillars (Phụ khoa 4, Hiếm muộn 11, Sản khoa 54). Different marker per pillar. **0 duplicates, 0 failures.** Re-run skipped all 69 (idempotency verified). Authority gain: pillar incoming +69 links (verified via Rank Math `get-incoming-links`).
+Real-world test (2026-05-13, a B2B services site): ~70 cluster posts processed across 3 topic pillars. Different marker per pillar. **0 duplicates, 0 failures.** Re-run skipped all (idempotency verified). Authority gain: pillar incoming links +N (verified via Rank Math `get-incoming-links`).
 
 ## Patterns reusable
 
@@ -259,4 +259,4 @@ Save to project's `audit/` folder:
 - [`litespeed-cache-mgmt.md`](litespeed-cache-mgmt.md) — cache after bulk updates
 - [`seo-audit.md`](seo-audit.md) — when bulk fix SEO issues
 - [`pitfalls.md`](../references/pitfalls.md) — PHP-FPM exhaustion on rapid REST
-- Insight reference: PKM-2026-05-13-081 (idempotent marker pattern, 69-post real test)
+- Insight source: weekly distillation 2026-05-13 (idempotent marker pattern, ~70-post real test)

@@ -221,4 +221,4 @@ Symptom: "Lighthouse cache policy audit fails (7 days)"
 - [`performance.md`](../references/performance.md) — Lighthouse cache policy + CWV
 - [`wp-abilities.md`](../references/wp-abilities.md) — REST namespace patterns
 - [`rankmath.md`](../references/rankmath.md) — Rank Math meta + LSC interaction
-- Insight reference: PKM-2026-05-13-075 (stale-read fix với `rest_post_dispatch` filter)
+- Insight source: weekly distillation 2026-05-13 (stale-read fix via `rest_post_dispatch` filter)

@@ -297,4 +297,4 @@ Otherwise: **native first** — performance + a11y win.
 - [`responsive.md`](responsive.md) — viewport-based image sizing
 - [`a11y-debugging.md`](a11y-debugging.md) — accessibility audit when going custom
 - [`widget-mapping.md`](widget-mapping.md) — when to use HTML widget vs native Elementor widget
-- Insights references: CV-2026-05-07-041 (FAQ accordion), CV-2026-05-07-042 (Google Maps embed)
+- Insight sources: weekly distillation 2026-05-07 (FAQ accordion + Google Maps embed patterns)

@@ -158,7 +158,7 @@ Call: `POST /wp-json/rmo/v1/update {token, post_id, key, value}` → updated. Re
 **Option B — rankmath-mcp wrapper plugin** ([`workflows/build-mcp-wrapper-plugin.md`](../workflows/build-mcp-wrapper-plugin.md)):
 - Plugin wraps `update_post_meta('rank_math_*')` via WP-Abilities Framework
 - Permanent solution, MCP-discoverable
-- Reference implementation: PKMT `audit/rankmath-mcp/` (16 abilities cho Link Genius + meta CRUD + redirects)
+- Reference implementation: a wrapper plugin (16 abilities for Link Genius + meta CRUD + redirects) — see [`workflows/build-mcp-wrapper-plugin.md`](../workflows/build-mcp-wrapper-plugin.md)
 
 **Option C — Direct DB write** (last resort, không recommend):
 ```sql
@@ -168,7 +168,7 @@ Bypass mọi hooks → cần manually clear LiteSpeed cache after.
 
 ## 4. rankmath-mcp wrapper plugin — response key conventions
 
-Nếu dùng wrapper plugin pattern (vd `audit/rankmath-mcp/` ở PKMT), response keys KHÔNG follow `items` standard — preserve semantic keys per resource:
+Khi dùng wrapper plugin pattern (xem `workflows/build-mcp-wrapper-plugin.md`), response keys KHÔNG follow `items` standard — preserve semantic keys per resource:
 
 | Ability | Response key | Input key |
 |---|---|---|
@@ -200,4 +200,4 @@ Rank Math sitemap (XML) cached at file system level. Update post → sitemap kh�
 - [`schema-jsonld.md`](schema-jsonld.md) — Rank Math auto-emits Organization `@id` schema, multi-source coexistence
 - [`workflows/litespeed-cache-mgmt.md`](../workflows/litespeed-cache-mgmt.md) — WP-Abilities REST cache bust
 - [`workflows/build-mcp-wrapper-plugin.md`](../workflows/build-mcp-wrapper-plugin.md) — wrap Rank Math REST as MCP abilities
-- Insights references: PKM-2026-05-13-074 (lazy compute), -077 (redirect override), -078 (response keys)
+- Insight sources: weekly distillation 2026-05-13 (lazy compute behavior, redirect override semantics, response key conventions)

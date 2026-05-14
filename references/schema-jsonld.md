@@ -230,4 +230,4 @@ add_action( 'wp_head', function () {
 
 - [`rankmath.md`](rankmath.md) — Rank Math auto-emits Organization + WebSite — coexistence pattern
 - [`seo-checklist.md`](seo-checklist.md) — schema integration trong full SEO checklist
-- Insights references: PKM-2026-05-13-079 (@id conflict resolution), -080 (Physician 18-field YMYL)
+- Insight sources: weekly distillation 2026-05-13 (@id conflict resolution + Physician 18-field YMYL pattern)

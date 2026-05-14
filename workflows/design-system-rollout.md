@@ -271,7 +271,7 @@ Sau Phase 1+2, theme has consistent typography. Phase 3 audits hardcoded widget 
 Lock h2 across injected sections với unified CSS rule:
 
 ```css
-body.page-id-X .cha-INJECTED h2,    /* CV pattern */
+body.page-id-X .acme-INJECTED h2,    /* page-id + project-prefix scope */
 body .my-custom-section h2,          /* generic */
 body .injected-content h2 {
     font-family: 'Oswald', sans-serif !important;   /* match brand heading */

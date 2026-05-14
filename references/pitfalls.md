@@ -1567,7 +1567,7 @@ curl -s "${SITE}/${PAGE_SLUG}/?cb=$(date +%s)" | grep -c '<h1'
 
 # Check page size reduction (recursive content gone)
 curl -sI "${SITE}/${PAGE_SLUG}/" | grep -i content-length
-# Expected: smaller (PKMT case: 330KB → 313KB, -17KB)
+# Expected: smaller (real case observed: ~330KB → ~313KB, -17KB)
 ```
 
 ### When `theme-post-content` IS appropriate
@@ -1581,7 +1581,7 @@ Page hub (vd `/bai-viet/`, `/tin-tuc/`) should NOT contain `theme-post-content` 
 
 ### Reference fix
 
-PKMT 2026-05-13 evening: removed widget 33b2a75c from `/bai-viet/` (post 8004). H1 dup gone, page weight -17KB, hierarchy clean.
+Real case 2026-05-13 evening: removed the offending widget from a blog hub page (`/<articles-slug>/`). H1 duplicate gone, page weight -17KB, hierarchy clean.
 
 **Diagnostic technique**: see [`elementor-mcp.md`](elementor-mcp.md) "Diagnostic technique: demote `header_size` to find H1 duplication source" để xác định same-widget-2x vs different-widgets-2-instances vs template-overlay.
 
@@ -1650,7 +1650,7 @@ Following classes are **heavily used by Elementor** — never use as a brand-css
 ### Lessons
 
 - Brand-css designed cho HTML mockup KHÔNG nên dùng generic class names
-- Namespace cứng prefix per brand (vd `.cha-`, `.lsfx-`, `.pkm-`) tránh war
+- Namespace cứng prefix per brand (vd `.<project-prefix>-` per site — pick 3-4-char unique slug) tránh war
 - Always verify in DevTools Computed pane sau khi import brand-css vào Elementor site
 
 ## Default theme dark/light variant invisible on light parent

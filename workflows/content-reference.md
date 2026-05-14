@@ -174,7 +174,7 @@ Khi update 1 brand fact (founding year, team size, address, phone, awards), audi
 
 Update 1 nơi không trigger update các nơi khác → drift accumulates.
 
-### Story (real PKMT-adjacent example)
+### Story (anonymized real example)
 
 CLAUDE.md / content_reference.md ghi "founded 2014, 12 năm kinh nghiệm" (verified). Nhưng:
 - Homepage counter vẫn show "2013 — 10 năm" (cũ 1 year)

@@ -458,7 +458,7 @@ $a.Dispose()
 
 **Alternative**: build zip trên Linux (CI/CD, WSL) — `zip` CLI defaults to forward slash. Or use Node.js `archiver` library, Python `zipfile` (defaults to forward slash on all platforms).
 
-**Real-world impact**: PKMT `audit/rankmath-mcp-2.0.5.zip` rebuild after Compress-Archive default created backslash separator zip. Manual upload qua wp-admin: silent fail trên Linux/LSWS host.
+**Real-world impact**: a Rank Math wrapper plugin's `wrapper-mcp-2.0.5.zip` rebuild after Compress-Archive default created a backslash-separator zip. Manual upload via wp-admin: silent fail on Linux/LSWS host.
 
 ## Windows + Git Bash path quirks — MSYS_NO_PATHCONV
 

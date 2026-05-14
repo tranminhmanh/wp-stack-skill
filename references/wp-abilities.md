@@ -495,7 +495,7 @@ REST direct path always works regardless of `mcp.public` — it goes through the
 
 **Plugin design choice**: some plugins intentionally omit `mcp.public:true` (admin-only ops, internal abilities). When wrapping a third-party plugin's REST API into your own MCP-discoverable abilities (eg. rankmath-mcp wrapping Rank Math Link Genius REST), explicitly set both flags so end-users get autocomplete + dispatch via Claude/MCP clients.
 
-Discovered: PKMT session 2026-05-13, insight #082 (`rankmath-mcp` v2.0.4 missed flag → patched v2.0.5).
+Discovered: weekly distillation 2026-05-13 (a Rank Math wrapper plugin missed the flag in v2.0.4 → patched v2.0.5 after the silent-fail symptom).
 
 ## Liên quan
 

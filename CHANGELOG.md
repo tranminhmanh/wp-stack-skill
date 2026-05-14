@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.2] — 2026-05-13 (CI fix + brand-leak scrub)
+
+### Fixed
+
+- **CI lychee link-check** — 3 errors traced + fixed:
+  - `[0.7.0]` + `[0.7.1]` orphan release-tag link references in CHANGELOG → resolved by retroactively tagging the existing commits + creating GitHub release pages (commit `30d6cf2` → v0.7.0; commit `535705d` → v0.7.1)
+  - `fontawesome.com/v5/free` URL in `references/elementor-mcp.md` → updated to `/search?o=r&m=free` (regression of the v0.5.0 fix that originally landed in `pitfalls.md` but slipped into a new occurrence in `elementor-mcp.md` during v0.7.x)
+
+### Changed — brand-leak scrub across v0.7.x content
+
+The v0.7.x content shipped with project-specific identifiers (client acronyms, insight-ID prefixes that revealed project names, real-site references) that the pre-push scan added in commit `b3885d0` was meant to prevent. Caught + scrubbed in this patch:
+
+- Insight ID prefixes like `<acronym>-2026-05-XX-NNN` rewritten to `weekly distillation 2026-05-XX #NNN` (no project-name reveal)
+- Project-name-revealing phrasing rewritten with neutral placeholders (`the audited site`, `inherited B2B site`, `project A` / `project B`)
+- Brand-prefix CSS marker examples (`.cha-`, `.pkm-`, `pkm-pillar-...`) rewritten to `.<project-slug>-` / `acme-pillar-...`
+- GitHub release notes for v0.7.0 + v0.7.1 also edited via `gh release edit` for consistency
+
+### Files touched
+
+12 files, 66 lines re-worded. No semantic content change — patterns and references identical, only the source-attribution / example markers neutralized.
+
+[0.7.2]: https://github.com/tranminhmanh/wp-stack-skill/releases/tag/v0.7.2
+
 ## [0.7.1] — 2026-05-13 (night — Group C UPDATE completions)
 
 18 sections appended to 8 existing skill files. Continues Group D (v0.7.0) work — promotes UPDATE-tier insights from weekly insights.md cross-project. Insights that were already covered by skill v0.6.0 were skipped during execution (saved ~12 entries from initial 33-entry plan).
@@ -12,60 +35,60 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed — sections added
 
 - **`references/elementor-mcp.md`** — 4 new sections:
-  - "Elementor 4.0 — `update-page-settings custom_css` field does NOT load on frontend" (LiveSFX #13: workaround via HTML widget `<style>` injection; kit `custom_css` alternative)
-  - "FontAwesome Pro-only icons render EMPTY box" (LiveSFX #15.2: free alternatives table)
-  - "Elementor section `background_image` lưu trong post-X.css, KHÔNG inline HTML" (CV #30: verify via post-CSS file fetch, not HTML grep)
-  - "Diagnostic technique: demote `header_size` to find H1 duplication source" (PKM #085: same-widget vs different-widgets distinguish methodology)
+  - "Elementor 4.0 — `update-page-settings custom_css` field does NOT load on frontend" (insight #13: workaround via HTML widget `<style>` injection; kit `custom_css` alternative)
+  - "FontAwesome Pro-only icons render EMPTY box" (insight #15.2: free alternatives table)
+  - "Elementor section `background_image` lưu trong post-X.css, KHÔNG inline HTML" (insight #30: verify via post-CSS file fetch, not HTML grep)
+  - "Diagnostic technique: demote `header_size` to find H1 duplication source" (insight #085: same-widget vs different-widgets distinguish methodology)
 
 - **`references/pitfalls.md`** — 3 new sections:
-  - "`theme-post-content` widget trên page hub = self-recursion render" (PKM #084: critical SEO bug — data clean, render multiplicity 2x via `the_content()` self-evaluation; fix = remove widget; detection + verification + reference fix from PKMT)
-  - "Brand-css generic class collisions với Elementor" (CV #32: `.container`, `.row`, etc. Elementor uses; namespace via project prefix `.cha-`, `.pkm-`)
-  - "Default theme dark/light variant invisible on light parent" (CV #33: brand-css designed cho dark theme rendering invisible on light bg; defensive mu-plugin CSS via `:not()`)
+  - "`theme-post-content` widget trên page hub = self-recursion render" (insight #084: critical SEO bug — data clean, render multiplicity 2x via `the_content()` self-evaluation; fix = remove widget; detection + verification + reference fix from the audited site)
+  - "Brand-css generic class collisions với Elementor" (insight #32: `.container`, `.row`, etc. Elementor uses; namespace via project prefix `.<project-slug>-`)
+  - "Default theme dark/light variant invisible on light parent" (insight #33: brand-css designed cho dark theme rendering invisible on light bg; defensive mu-plugin CSS via `:not()`)
 
 - **`references/performance.md`** — 3 new sections:
-  - "LiteSpeed Cache lifecycle — 2 invalidation paths" (CV #27: save_post auto-purge reliable vs manual Purge All flaky via REST)
-  - "LiteSpeed default `max-age=604800` (7 days) → Lighthouse cache policy FAIL" (CV #49: .htaccess override to 1 year + immutable for versioned assets)
-  - "Avatar `src=""` is LiteSpeed lazy-load, NOT broken image" (CV #50: misdiagnosis red herring; real issue is oversized image without srcset)
+  - "LiteSpeed Cache lifecycle — 2 invalidation paths" (insight #27: save_post auto-purge reliable vs manual Purge All flaky via REST)
+  - "LiteSpeed default `max-age=604800` (7 days) → Lighthouse cache policy FAIL" (insight #49: .htaccess override to 1 year + immutable for versioned assets)
+  - "Avatar `src=""` is LiteSpeed lazy-load, NOT broken image" (insight #50: misdiagnosis red herring; real issue is oversized image without srcset)
 
 - **`references/vietnamese.md`** — 1 new section:
-  - "Tooling: PowerShell scripts với Vietnamese content cần UTF-8 BOM" (PKM #087: PS 5.1 system codepage mojibake on diacritics; BOM fix recipe + verification)
+  - "Tooling: PowerShell scripts với Vietnamese content cần UTF-8 BOM" (insight #087: PS 5.1 system codepage mojibake on diacritics; BOM fix recipe + verification)
 
 - **`references/mcp-architecture.md`** — 1 new section:
-  - "REST registry pagination caveat — `per_page` cap on abilities list" (CV #61: default 100/page; npm bridge hardcoded miss; per_page=200 override; MCP discover bypass; em script `cache_abilities.ps1` reference)
+  - "REST registry pagination caveat — `per_page` cap on abilities list" (insight #61: default 100/page; npm bridge hardcoded miss; per_page=200 override; MCP discover bypass; em script `cache_abilities.ps1` reference)
 
 - **`references/image-optim-recipes.md`** — 3 new sections:
-  - "WordPress `srcset` variants must be optimized as a set" (CV #48: browser picks 1 by DPR × viewport; optimize all variants of basename together)
-  - "Replicate API rate limit — >2 parallel = 429" (CV #28: sequential với sleep 10s, batch 2-by-2 max; failed calls not charged)
-  - "Flux 2 Pro aspect_ratio — 11 ratios only, no 21:9" (CV #38: workarounds — switch model OR CSS object-position crop)
+  - "WordPress `srcset` variants must be optimized as a set" (insight #48: browser picks 1 by DPR × viewport; optimize all variants of basename together)
+  - "Replicate API rate limit — >2 parallel = 429" (insight #28: sequential với sleep 10s, batch 2-by-2 max; failed calls not charged)
+  - "Flux 2 Pro aspect_ratio — 11 ratios only, no 21:9" (insight #38: workarounds — switch model OR CSS object-position crop)
 
 - **`workflows/comprehensive-audit.md`** — 2 new sections:
-  - "Audit Rank Math features — Link Genius backend = REST routes" (PKM #066 equivalent: backend is REST routes `/rankmath/v1/links/*`, not abilities; direct audit pattern + how to wrap for MCP)
-  - "Rank Math `rank_math_*` meta NOT exposed via REST default" (CV #29: silent ignore on PATCH; 3 workaround paths)
+  - "Audit Rank Math features — Link Genius backend = REST routes" (insight #066 equivalent: backend is REST routes `/rankmath/v1/links/*`, not abilities; direct audit pattern + how to wrap for MCP)
+  - "Rank Math `rank_math_*` meta NOT exposed via REST default" (insight #29: silent ignore on PATCH; 3 workaround paths)
 
 - **`workflows/build-mcp-wrapper-plugin.md`** — 1 new section:
-  - "Deploy wrapper plugin — local zip workflow" (PKM #090: `mcp-wp/install-plugin` URL-only constraint; 4 deploy paths — manual wp-admin / public URL / SCP / WordPress.org; verify + rollback procedures)
+  - "Deploy wrapper plugin — local zip workflow" (insight #090: `mcp-wp/install-plugin` URL-only constraint; 4 deploy paths — manual wp-admin / public URL / SCP / WordPress.org; verify + rollback procedures)
 
 ### Skipped — already covered by skill v0.6.0+
 
 12 insights from initial Group C plan were already covered:
-- LiveSFX #14 (Fluent Forms button styling) → `fluent-forms.md` § Submit-button styling
-- LiveSFX #15.1 (parallel widget reverse order) → `elementor-mcp.md` § `add-container` cells append at INDEX 0
-- LiveSFX #15.3 (currency_format) → `elementor-mcp.md` § `add-price-table` currency_format
-- LiveSFX #15.4 (show_ribbon inherit) → `elementor-mcp.md` § show_ribbon carries over from cloned cards
-- LiveSFX #17 (empty Fluent Form) → `fluent-forms.md` references `pitfalls.md` shortcode-empty entry
-- CV #24 (update_page_from_file skip post_content) → `elementor-mcp.md` § `update_page_from_file` does NOT regen `post_content`
-- CV #25 (REST binary capture corruption) → `deployment.md` § REST API response capture safety
-- CV #26 (media duplicate filename suffix) → `deployment.md` § WP media duplicate filename pattern
-- CV #34 (css_classes snake_case) → `elementor-mcp.md` § css_classes field name — widget vs container
-- CV #51 + CV #60 (Lighthouse URL anchor + total-byte-weight) → `lighthouse-driven-optim.md` existing coverage
-- PKM #017 (Astra site-post-title bulk) → already PROMOTED-TO-SKILL v0.2.0
-- PKM #018 + #071 (Rank Math updateMeta REST + tag-based focus_keyword) → `workflows/seo-audit.md` v0.6.0
+- insight #14 (Fluent Forms button styling) → `fluent-forms.md` § Submit-button styling
+- insight #15.1 (parallel widget reverse order) → `elementor-mcp.md` § `add-container` cells append at INDEX 0
+- insight #15.3 (currency_format) → `elementor-mcp.md` § `add-price-table` currency_format
+- insight #15.4 (show_ribbon inherit) → `elementor-mcp.md` § show_ribbon carries over from cloned cards
+- insight #17 (empty Fluent Form) → `fluent-forms.md` references `pitfalls.md` shortcode-empty entry
+- insight #24 (update_page_from_file skip post_content) → `elementor-mcp.md` § `update_page_from_file` does NOT regen `post_content`
+- insight #25 (REST binary capture corruption) → `deployment.md` § REST API response capture safety
+- insight #26 (media duplicate filename suffix) → `deployment.md` § WP media duplicate filename pattern
+- insight #34 (css_classes snake_case) → `elementor-mcp.md` § css_classes field name — widget vs container
+- insight #51 + insight #60 (Lighthouse URL anchor + total-byte-weight) → `lighthouse-driven-optim.md` existing coverage
+- insight #017 (Astra site-post-title bulk) → already PROMOTED-TO-SKILL v0.2.0
+- insight #018 + #071 (Rank Math updateMeta REST + tag-based focus_keyword) → `workflows/seo-audit.md` v0.6.0
 
 ### Insights promoted CANDIDATE → PROMOTED-TO-SKILL via this round
 
-PKM: #084 (theme-post-content recursion), #085 (demote-h2 diagnostic), #087 (PS UTF-8 BOM), #090 (install-plugin URL constraint).
-LiveSFX: #13 (Elementor 4 custom_css broken), #15.2 (FA Pro icons empty).
-CV: #27 (LiteSpeed save_post), #28 (Replicate rate limit), #29 (Rank Math meta REST), #30 (background_image in post-X.css), #32 (brand-css class collision), #33 (dark/light variant invisible), #38 (Flux aspect ratio), #48 (srcset variants), #49 (LSC max-age Lighthouse), #50 (avatar src empty lazy-load), #61 (per_page cap).
+Insights: #084 (theme-post-content recursion), #085 (demote-h2 diagnostic), #087 (PS UTF-8 BOM), #090 (install-plugin URL constraint).
+Project-A insights: #13 (Elementor 4 custom_css broken), #15.2 (FA Pro icons empty).
+Project-B insights: #27 (LiteSpeed save_post), #28 (Replicate rate limit), #29 (Rank Math meta REST), #30 (background_image in post-X.css), #32 (brand-css class collision), #33 (dark/light variant invisible), #38 (Flux aspect ratio), #48 (srcset variants), #49 (LSC max-age Lighthouse), #50 (avatar src empty lazy-load), #61 (per_page cap).
 
 ### Total — Round 9 + Round 9.1 cumulative
 
@@ -78,22 +101,22 @@ CV: #27 (LiteSpeed save_post), #28 (Replicate rate limit), #29 (Rank Math meta R
 
 ## [0.7.0] — 2026-05-13 (evening — Round 9 weekly distillation)
 
-20 insights promoted from weekly insights.md cross-project (PKMaiThanh, Chacavungtau-web, livesfx-web — Group D in plan `insights-skill-classification-2026-05-13.md`). 5 new reference/workflow files + 6 new sections appended to existing files. Routing matrix in SKILL.md gains 5 rows.
+20 insights promoted from weekly insights.md cross-project (inherited B2B site, project-B, project-A — Group D in plan `insights-skill-classification-2026-05-13.md`). 5 new reference/workflow files + 6 new sections appended to existing files. Routing matrix in SKILL.md gains 5 rows.
 
 ### Added — 5 new files
 
-- **`references/rankmath.md`** — Rank Math SEO behaviors, quirks, automation patterns. 6 sections: (1) SEO score recompute is LAZY — REST updates don't trigger compute; (2) redirect `comparison: exact` overrides published source URL (allows "setup redirect → trash source" reverse workflow); (3) `rank_math_*` post meta NOT exposed via REST default (3 workaround options); (4) wrapper plugin response key conventions; (5) LiteSpeed cache + meta stale-read trap; (6) sitemap regen triggers. Insights sources: PKM-2026-05-13-074, -077, -078.
-- **`references/schema-jsonld.md`** — Structured Data (JSON-LD / Schema.org) patterns + pitfalls. 5 sections: (1) Multi-source `@id` conflict — rename + `parentOrganization` cross-link pattern; (2) YMYL Physician schema 18-field design for E-E-A-T (template + per-profession reuse); (3) JSON-LD injection methods comparison (plugin vs HTML widget vs WP filter); (4) validation tools; (5) common types reference. Insights sources: PKM-2026-05-13-079, -080.
-- **`references/native-html-patterns.md`** — Zero-JS, browser-native, A11y-by-default UI patterns. 5 sections: FAQ accordion `<details>`/`<summary>`, Google Maps `<iframe>` no API key, `<dialog>` modal, image gallery (dialog + picture), HTML5 form validation. Comparison table vs plugin alternatives. Insights sources: CV-2026-05-07-041, -042.
-- **`workflows/litespeed-cache-mgmt.md`** — LiteSpeed Cache management for REST API + MCP automation. 5 traps documented: (1) WP-Abilities REST stale-read after write — fix via `rest_post_dispatch` filter + `litespeed_control_set_nocache`; (2) page cache auto-invalidates via `save_post`, not manual purge; (3) Cache-Control vs Lighthouse cache policy audit; (4) `X-LiteSpeed-Cache: hit/miss` indicators; (5) PHP-FPM exhaustion under concurrency. Diagnostic flowchart included. Insights source: PKM-2026-05-13-075.
-- **`workflows/bulk-content-automation.md`** — Idempotent bulk content modification via WP REST. 4-stage workflow (Plan → Dry-run → Execute with marker → Verify). Marker class pattern (`{project}-{purpose}-{slug}`) provides idempotency, audit, rollback, recovery. Real-world test: 69 cluster posts, 0 duplicates, 0 failures. Reusable patterns: pillar up-links, author bylines, trust callouts, affiliate disclosures, review notices. Insights source: PKM-2026-05-13-081.
+- **`references/rankmath.md`** — Rank Math SEO behaviors, quirks, automation patterns. 6 sections: (1) SEO score recompute is LAZY — REST updates don't trigger compute; (2) redirect `comparison: exact` overrides published source URL (allows "setup redirect → trash source" reverse workflow); (3) `rank_math_*` post meta NOT exposed via REST default (3 workaround options); (4) wrapper plugin response key conventions; (5) LiteSpeed cache + meta stale-read trap; (6) sitemap regen triggers. Insights sources: weekly distillation 2026-05-13 #074, -077, -078.
+- **`references/schema-jsonld.md`** — Structured Data (JSON-LD / Schema.org) patterns + pitfalls. 5 sections: (1) Multi-source `@id` conflict — rename + `parentOrganization` cross-link pattern; (2) YMYL Physician schema 18-field design for E-E-A-T (template + per-profession reuse); (3) JSON-LD injection methods comparison (plugin vs HTML widget vs WP filter); (4) validation tools; (5) common types reference. Insights sources: weekly distillation 2026-05-13 #079, -080.
+- **`references/native-html-patterns.md`** — Zero-JS, browser-native, A11y-by-default UI patterns. 5 sections: FAQ accordion `<details>`/`<summary>`, Google Maps `<iframe>` no API key, `<dialog>` modal, image gallery (dialog + picture), HTML5 form validation. Comparison table vs plugin alternatives. Insights sources: weekly distillation 2026-05-07 #041, -042.
+- **`workflows/litespeed-cache-mgmt.md`** — LiteSpeed Cache management for REST API + MCP automation. 5 traps documented: (1) WP-Abilities REST stale-read after write — fix via `rest_post_dispatch` filter + `litespeed_control_set_nocache`; (2) page cache auto-invalidates via `save_post`, not manual purge; (3) Cache-Control vs Lighthouse cache policy audit; (4) `X-LiteSpeed-Cache: hit/miss` indicators; (5) PHP-FPM exhaustion under concurrency. Diagnostic flowchart included. Insights source: weekly distillation 2026-05-13 #075.
+- **`workflows/bulk-content-automation.md`** — Idempotent bulk content modification via WP REST. 4-stage workflow (Plan → Dry-run → Execute with marker → Verify). Marker class pattern (`{project}-{purpose}-{slug}`) provides idempotency, audit, rollback, recovery. Real-world test: 69 cluster posts, 0 duplicates, 0 failures. Reusable patterns: pillar up-links, author bylines, trust callouts, affiliate disclosures, review notices. Insights source: weekly distillation 2026-05-13 #081.
 
 ### Changed — 6 new sections in existing files
 
-- **`references/deployment.md`** — added "Plugin zip build cross-platform — forward-slash separator MUST" section (PKM #089: Compress-Archive default backslash separator silent-fails on Linux WordPress host; fix via `.NET ZipArchive` explicit `/`) + "Windows + Git Bash path quirks — MSYS_NO_PATHCONV" section (CV #63: bash subshell path mangling when crafting URLs/JSON with `/` literals).
-- **`references/pitfalls.md`** — added "CSS specificity battles — `body.page-id-X` selector wins over plain `body`" section (CV #39). Specificity ladder table + 4 fix strategies (edit at source, match exact chain, scope-NOT, inline style). Documents why mu-plugin page-id rules override page-builder custom CSS.
-- **`workflows/design-system-rollout.md`** — added Phase 5 "Visual rhythm standardization (custom-injected sections)" (CV #44: unified h2 typography with gold underline + Oswald font for injected HTML sections matching brand sec-head) + Phase 6 "Canonical IA reorder via JS `insertBefore`" (CV #43: 2-stage inject-then-reorder pattern for funnel-canonical section order across custom sections).
-- **`workflows/content-reference.md`** — added "Brand fact audit cross-page when update" section (LiveSFX #18). 5-step audit workflow when updating shared brand facts (year, team size, address, etc.) to catch drift across counter widgets, headings, schema, meta tags, footer. Real-world example: PKMT founding year drift. Cadence: 3-month audit.
+- **`references/deployment.md`** — added "Plugin zip build cross-platform — forward-slash separator MUST" section (insight #089: Compress-Archive default backslash separator silent-fails on Linux WordPress host; fix via `.NET ZipArchive` explicit `/`) + "Windows + Git Bash path quirks — MSYS_NO_PATHCONV" section (insight #63: bash subshell path mangling when crafting URLs/JSON with `/` literals).
+- **`references/pitfalls.md`** — added "CSS specificity battles — `body.page-id-X` selector wins over plain `body`" section (insight #39). Specificity ladder table + 4 fix strategies (edit at source, match exact chain, scope-NOT, inline style). Documents why mu-plugin page-id rules override page-builder custom CSS.
+- **`workflows/design-system-rollout.md`** — added Phase 5 "Visual rhythm standardization (custom-injected sections)" (insight #44: unified h2 typography with gold underline + Oswald font for injected HTML sections matching brand sec-head) + Phase 6 "Canonical IA reorder via JS `insertBefore`" (insight #43: 2-stage inject-then-reorder pattern for funnel-canonical section order across custom sections).
+- **`workflows/content-reference.md`** — added "Brand fact audit cross-page when update" section (insight #18). 5-step audit workflow when updating shared brand facts (year, team size, address, etc.) to catch drift across counter widgets, headings, schema, meta tags, footer. Real-world example: the audited site founding year drift. Cadence: 3-month audit.
 
 ### Changed — `SKILL.md` routing matrix +5 rows
 
@@ -106,13 +129,13 @@ New task routes added to the "When to load which reference" table:
 
 ### Insights promoted (status CANDIDATE → PROMOTED-TO-SKILL)
 
-PKM: #074, #075, #077, #079, #080, #081, #089. CV: #39, #41, #42, #43, #44, #63. LiveSFX: #18.
+Insights: #074, #075, #077, #079, #080, #081, #089. Project-B insights: #39, #41, #42, #43, #44, #63. Project-A insights: #18.
 
 ### Sources — patterns extracted from
 
-- **PKMaiThanh week** — 5 sessions across 2026-05-10 → 2026-05-13: SEO automation 85 posts, Rank Math wrapper plugin v2.0.0 → v2.0.5 (mcp.public flag fix in evening session), JSON-LD LocalBusiness + Physician schema rollout, cluster pillar wiring 69 posts.
-- **Chacavungtau-web week** — 2026-05-07 (CRO injection, mobile menu, layout standard), 2026-05-09 (image opt + accessibility sprint), 2026-05-13 (MCP architecture diagnostics).
-- **livesfx-web week** — 2026-05-10 session: Elementor MCP gotchas, Fluent Forms styling, brand fact drift audit, content_reference.md pattern crystallized.
+- **inherited B2B site week** — 5 sessions across 2026-05-10 → 2026-05-13: SEO automation 85 posts, Rank Math wrapper plugin v2.0.0 → v2.0.5 (mcp.public flag fix in evening session), JSON-LD LocalBusiness + Physician schema rollout, cluster pillar wiring 69 posts.
+- **project-B week** — 2026-05-07 (CRO injection, mobile menu, layout standard), 2026-05-09 (image opt + accessibility sprint), 2026-05-13 (MCP architecture diagnostics).
+- **project-A week** — 2026-05-10 session: Elementor MCP gotchas, Fluent Forms styling, brand fact drift audit, content_reference.md pattern crystallized.
 
 [0.7.0]: https://github.com/tranminhmanh/wp-stack-skill/releases/tag/v0.7.0
 
