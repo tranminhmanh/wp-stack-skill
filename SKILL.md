@@ -93,6 +93,9 @@ Summary:
 | Native HTML patterns (FAQ accordion, modal, map embed — zero JS) | `references/native-html-patterns.md` |
 | LiteSpeed cache stale-read fix (REST GET after write) | `workflows/litespeed-cache-mgmt.md` + `references/performance.md` |
 | Bulk content automation (idempotent prepend/append via REST) | `workflows/bulk-content-automation.md` + `references/wp-abilities.md` |
+| Code Snippets plugin REST API (audit + surgical edit) | `references/code-snippets.md` |
+| Google Business Profile setup (description + category) | `references/gbp-setup.md` |
+| MU-plugin patterns (suppress upstream Closure, bridge, polyfill) | `references/mu-plugin-patterns.md` |
 
 ## Anti-patterns — STRICTLY avoid
 

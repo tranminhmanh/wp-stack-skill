@@ -194,6 +194,236 @@ Rank Math sitemap (XML) cached at file system level. Update post → sitemap kh�
 - wp-admin → Rank Math → Sitemap Settings → Save (forces regen)
 - Programmatic: `do_action( 'rank_math/sitemap/hit_index' );` hoặc delete cache transient `rank_math_sitemap_*`
 
+## 7. Schema Builder 2.x — `rank_math_schema_{Type}` format (no Schema Pro needed)
+
+**Key insight**: Rank Math Pro v3.0.112+ ships a complete Schema Builder. You do **NOT need a separate Schema Pro plugin** to emit rich-snippet structured data. The format is one post-meta key per schema type, namespaced as `rank_math_schema_{Type}`.
+
+### Meta-key naming
+
+One key per schema TYPE, per post. Value is a JSON object with a `metadata` wrapper:
+
+```
+rank_math_schema_Service          # Service
+rank_math_schema_LocalBusiness    # LocalBusiness
+rank_math_schema_Article          # Article (legacy 1.x uses different key — see below)
+rank_math_schema_Event            # Event (with subtypes: Festival, BusinessEvent, SocialEvent)
+rank_math_schema_Product          # Product
+```
+
+### Value shape
+
+```jsonc
+{
+  "@type": "Service",
+  "metadata": {
+    "title":     "Service",
+    "type":      "template",
+    "shortcode": "s-{post_id}-service",
+    "isPrimary": true
+  },
+  "@id":         "https://<site>/<page>/#service",
+  "name":        "...",
+  "description": "...",
+  "provider":    { "@type": "Organization", "@id": "https://<site>/#organization" }
+}
+```
+
+The `metadata` wrapper is mandatory — without it, Rank Math doesn't recognize the schema and silently doesn't emit it on the frontend.
+
+### Setting via REST (one ability call)
+
+```
+POST /wp-abilities/v1/abilities/rankmath-mcp/update-meta/run
+Body: {"input": {"id": <post_id>, "meta": {"rank_math_schema_Service": { ...full JSON object... }}}}
+```
+
+WordPress auto-serializes the JSON object → PHP array when `update_post_meta()` runs. Rank Math frontend filter picks it up and emits in `@graph`.
+
+### Verified supported types
+
+Service, LocalBusiness, Article, Festival, BusinessEvent, SocialEvent, Product, Recipe. Tested on real deployments — 100% render frontend (anonymous user).
+
+### What NOT to use
+
+❌ **`rankmath-mcp/update-schemas` ability** — save returns success but schemas DO NOT render on frontend. Different code path that doesn't validate properly. Use `update-meta` with `rank_math_schema_{Type}` key instead.
+
+❌ **Legacy 1.x meta `rank_math_rich_snippet` + `rank_math_snippet_*`** — will BREAK the 2.x Schema Builder. After legacy values are present, Schema Builder shows only Breadcrumb + broken Article (`@type: ""`). Delete legacy keys before migrating to 2.x.
+
+❌ **Hardcoded `@id`** — Rank Math overrides at runtime with pattern `#schema-{post_id}`. Either use the runtime-generated `@id` OR follow a custom `@id` convention site-wide (see [`schema-jsonld.md`](schema-jsonld.md) "@id linking").
+
+### FAQPage NOT supported via this path
+
+Tested all variations: `rank_math_schema_FAQPage`, `rank_math_schema_FAQ`, lowercase, numbered — **all save OK, none render** on frontend. Rank Math only recognizes FAQPage via:
+
+1. Gutenberg "Rank Math FAQ Block" (manual config in editor)
+2. Schema Templates UI manual config (per-page UI flow)
+
+**Workaround**: inject `<script type="application/ld+json">{"@type":"FAQPage","mainEntity":[...]}</script>` directly into an HTML widget. Google parses JSON-LD anywhere in the document body. See [`schema-jsonld.md`](schema-jsonld.md) for the injection pattern.
+
+## 8. WooCommerce Shop page — title precedence resolution (dual-context gotcha)
+
+WooCommerce Shop page (page id from `wc_get_page_id('shop')`) is **dual-context**: it's both a Page (CPT `page`) and a Product Archive. Rank Math resolves title vs description via DIFFERENT chains for these two contexts:
+
+| Chain | Resolution order |
+|---|---|
+| **Title** | per-page `rank_math_title` postmeta → `pt_page_title` template → default |
+| **Description** | per-page `rank_math_description` postmeta → `pt_product_archive_description` template → `pt_page_description` → default |
+
+⚠️ **`pt_product_archive_title` is NOT in the title chain for `/shop/`**. Updating that template-level option changes only descriptions on product archives, not the Shop page title.
+
+**Symptom**: update `rank-math-options-titles[pt_product_archive_title]` via REST → meta description changes correctly, but `<title>` tag stays `"Shop · Sitename"` (rendered from `pt_page_title` template `%title% %sep% %sitename%`). og:title also stays old.
+
+**Fix — always use per-page meta override for the Shop page**:
+
+```php
+$shop_id = wc_get_page_id('shop');
+update_post_meta($shop_id, 'rank_math_title',       '<custom title>');
+update_post_meta($shop_id, 'rank_math_description', '<custom description 150-160ch>');
+do_action('litespeed_purge_all');  // clear cached HTML
+```
+
+Or via the wrapper-plugin REST endpoint:
+
+```bash
+POST /wp-abilities/v1/abilities/rankmath-mcp/update-meta/run
+Body: {"input": {
+  "id": <shop_page_id>,
+  "meta": {
+    "rank_math_title":       "<custom>",
+    "rank_math_description": "<custom>"
+  }
+}}
+```
+
+**Identify shop page ID dynamically**:
+```php
+$shop_id = wc_get_page_id('shop');  // handles non-default shop page IDs
+```
+
+Same pattern applies to other dual-context WC pages: Cart, Checkout, My Account, Product Tag archives.
+
+## 9. OG image resolution chain — `featured_media` beats SVG `rank_math_facebook_image`
+
+**Symptom**: set `rank_math_facebook_image` = SVG URL → output `og:image` is a different image (the page's `featured_media` JPG, not the SVG).
+
+**Root cause**: Rank Math validates the OG image MIME type. SVG (`image/svg+xml`) is **skipped** because Facebook / Twitter / LinkedIn do not render SVG in social previews → fallback chain goes to `featured_media`.
+
+### Resolution chain (highest to lowest priority)
+
+1. `rank_math_facebook_image` post meta — only if URL is **raster** (JPG, PNG, WebP)
+2. `featured_media` of the post — raster fallback
+3. Site-wide default OG image (`rank-math-options-titles[open_graph_image_id]`)
+4. No OG image (Rank Math omits the meta tag entirely)
+
+### Implications
+
+- **Fastest path to set OG image** for a page = `update featured_media` via REST. No need to touch `rank_math_facebook_image` at all for 90% of cases.
+- **Per-page Rank Math meta override still wins** when the override URL is a raster image.
+- **SVG can be uploaded** (as a hero / inline brand asset) without affecting OG — Rank Math just skips it for OG purposes.
+
+### REST recipe
+
+```bash
+# Set featured image (Rank Math auto-picks for og:image when raster)
+curl -u "$U:$APP_PW" -X POST "$SITE/wp-json/wp/v2/pages/<page_id>" \
+  -H "Content-Type: application/json" \
+  -d "{\"featured_media\": <attachment_id>}"
+
+# Verify
+curl -s "$SITE/<page-path>/?cb=$(date +%s)" | grep -oE '<meta property="og:image"[^>]+>'
+```
+
+## 10. WooCommerce product OG image — `/wc/v3/products` `images[]` array (REPLACE semantic)
+
+Products use the WooCommerce REST endpoint, NOT the WP Page endpoint. The `featured_media` field doesn't apply directly — use the `images[]` array.
+
+### Endpoint differences
+
+| Post type | Endpoint | Featured image field |
+|---|---|---|
+| Page | `/wp-json/wp/v2/pages/<id>` | `featured_media` (integer attachment ID) |
+| Post | `/wp-json/wp/v2/posts/<id>` | `featured_media` |
+| **Product** | `/wp-json/wc/v3/products/<id>` | **`images[]` array** |
+
+### Update workflow
+
+```bash
+curl -u "$WP_USER:$WP_PASS" -X PUT "$WP_SITE/wp-json/wc/v3/products/<ID>" \
+  -H "Content-Type: application/json" \
+  -d '{"images": [{"id": <attachment_id>, "alt": "descriptive alt text"}]}'
+```
+
+### ⚠️ PUT with `images` REPLACES the entire array
+
+This is the most common gotcha. `images` is treated as the full set, not a patch:
+
+- Send `{"images": [{"id": 5}]}` → product now has 1 image (5). All existing images are unlinked.
+- To APPEND, fetch the product first, append to the existing array, then PUT the merged array back.
+
+```bash
+# Fetch existing images
+EXISTING=$(curl -u "$U:$P" "$SITE/wp-json/wc/v3/products/<ID>" | jq -r '.images')
+
+# Append new image
+NEW_IMAGES=$(echo "$EXISTING" | jq ". + [{\"id\": $NEW_ATTACH_ID, \"alt\": \"...\"}]")
+
+# PUT merged array
+curl -u "$U:$P" -X PUT "$SITE/wp-json/wc/v3/products/<ID>" \
+  -H "Content-Type: application/json" \
+  -d "{\"images\": $NEW_IMAGES}"
+```
+
+### Rank Math behavior for products
+
+First image in `images[]` = featured = `og:image` source. Rank Math auto-skips SVG (same as page logic above).
+
+### Cache invalidation
+
+PUT on `/wc/v3/products` triggers the `save_post` hook → LiteSpeed auto-purges the product page. No separate touch needed.
+
+### Verification
+
+```bash
+curl -s "$SITE/product/<slug>/?cb=$(date +%s)" | grep -oE '<meta property="og:image"[^>]+>'
+```
+
+## 11. Wrapper plugin response/input key conventions (rankmath-mcp pattern)
+
+When wrapping Rank Math REST routes into MCP abilities (see [`workflows/build-mcp-wrapper-plugin.md`](../workflows/build-mcp-wrapper-plugin.md)), the response shape doesn't follow the generic `{items: [...]}` standard. Each resource preserves its semantic key:
+
+| Wrapped ability | Response key |
+|---|---|
+| `bulk-get-meta` | `posts[]` |
+| `list-redirections` | `redirections[]` |
+| `get-incoming-links` | `links[]` |
+| `get-meta` | (object — not array) |
+
+Similarly, write abilities take semantic input keys, not generic ones:
+
+| Write ability | Input key |
+|---|---|
+| `update-meta-bulk` | `rows[]` (NOT `items` or `entries`) |
+| `create-redirection` | `destination` (NOT `url_to` or `target`) |
+
+This is a conscious design choice — preserves the wrapped REST API's vocabulary so users who know Rank Math docs can transfer their knowledge. When designing your own wrapper plugin, follow the same convention: keep the upstream's semantic naming, don't force a generic shape.
+
+### `get-meta` returns `post_title` in `title` field
+
+Specifically: the `get-meta` ability returns the WordPress `post_title` in the `title` response key — NOT the `rank_math_title` meta. This is intentional (the post's official title) but it confuses callers who expect the SEO title. To get the SEO title, read `rank_math_title` from the `meta` field of the response.
+
+### `update-meta` accepts both canonical + alias parameter names
+
+To ease migration from older Rank Math API versions, `update-meta` accepts the canonical key AND common aliases:
+
+| Canonical | Aliases |
+|---|---|
+| `seo_title` | `rank_math_title`, `title` |
+| `seo_description` | `rank_math_description`, `description` |
+| `focus_keyword` | `rank_math_focus_keyword`, `keyword` |
+| `canonical_url` | `rank_math_canonical_url`, `canonical` |
+
+Pick one convention per script and stick with it. Don't mix aliases within a single call — schema validation may catch the inconsistency.
+
 ## Liên quan
 
 - [`wp-abilities.md`](wp-abilities.md) — REST direct execution pattern

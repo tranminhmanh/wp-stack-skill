@@ -241,6 +241,91 @@ If the site has a legacy OG style (e.g. PHP GD vector) and you want to migrate t
 
 Migration cost: ~$0.04 + 5 min of work per page. ROI: 100% visual cohesion, brand consistency, social-share quality.
 
+## Flux 2 Pro img-to-img — brand-consistent OG image recipe
+
+When the site already has hero photography on it (real product shots, real venue photos, real team portraits), use **Flux 2 Pro with `INPUT_IMAGES=`** (img-to-img mode) instead of text-to-image. The reference image preserves color palette + lighting + style; the prompt adds new composition.
+
+### When this beats plain Pro text-to-image
+
+| Mode | Cost | When |
+|---|---|---|
+| Flux schnell text-to-image | $0.003 | Drafts, atmospheric scenes, no brand reference yet |
+| Flux 2 Pro text-to-image | $0.04 | Brand hero, premium, weak schnell regens |
+| **Flux 2 Pro img-to-img** (`INPUT_IMAGES=...`) | **$0.06** | Match existing brand photography on a live site |
+
+The +$0.02 over plain Pro is worth it when brand consistency matters more than novelty. For OG image that needs to look like "the same brand" as the live hero, this is the right tier.
+
+### Recipe
+
+```bash
+MODEL=pro2 \
+ASPECT=16:9 \
+RESOLUTION="1 MP" \
+QUALITY=92 \
+INPUT_IMAGES="https://<site>/wp-content/uploads/2026/05/real-product-hero.jpg" \
+./scripts/genimg.sh \
+  "[hero subject], [composition style], [lighting], [color palette], [aesthetic], no text no logo, clean 16:9 banner composition" \
+  ./out/og-home og-hero
+```
+
+Output: 1344×752 px (16:9 of 1 MP), ~250–300 KB JPG q92.
+
+### Aspect ratio note
+
+- Target OG spec: 1200×630 (= 1.91:1)
+- Flux 2 Pro `aspect=16:9`: 1344×752 (= 1.78:1)
+- Facebook / LinkedIn crop ~5% top + bottom → still looks fine
+
+Don't fight the aspect ratio — accept the ~5% crop. If you need exact 1.91:1: Pillow post-crop to 1200×630 or switch to `pro2-ultra` with `21:9` (cost: $0.10).
+
+### Two critical prompt tips
+
+1. **`"no text no logo"` is mandatory** — Flux models hallucinate text/logos at random. ~30% of outputs without this token contain garbled fake text.
+2. **Context descriptors matter more than nouns** — "premium B2B wholesale aesthetic" / "cinematic event aesthetic" dial Flux toward commercial photography style instead of generic stock-photo look.
+
+### What the reference image preserves vs not
+
+The input image (`INPUT_IMAGES=...`) provides:
+- ✓ Color palette (dominant hues)
+- ✓ Lighting direction + intensity
+- ✓ Composition style (close-up vs wide)
+- ✓ Texture quality (polished vs raw)
+
+It does NOT preserve:
+- ✗ Subject identity (a person's face won't match)
+- ✗ Specific product details
+- ✗ Exact background
+
+Pick a reference photo that has the brand's mood/lighting; use the prompt to specify the subject content.
+
+### Upload + attach workflow
+
+```bash
+# 1. Upload to WP Media via REST
+ATTACH_RESP=$(curl -u "$WP_USER:$WP_PASS" -X POST "$WP_SITE/wp-json/wp/v2/media" \
+  -H "Content-Disposition: attachment; filename=\"og-home.jpg\"" \
+  -H "Content-Type: image/jpeg" \
+  --data-binary @out/og-home/og-hero-001.jpg)
+ATTACH_ID=$(echo "$ATTACH_RESP" | jq -r '.id')
+
+# 2. Set as featured image on the target page
+#    Rank Math uses featured_media as og:image fallback when raster-only
+#    (see references/rankmath.md "OG image resolution chain")
+curl -u "$WP_USER:$WP_PASS" -X POST "$WP_SITE/wp-json/wp/v2/pages/<PAGE_ID>" \
+  -H "Content-Type: application/json" \
+  -d "{\"featured_media\": $ATTACH_ID}"
+
+# 3. Verify
+curl -s "$WP_SITE/<page-path>/?cb=$(date +%s)" | grep -oE '<meta property="og:image"[^>]+>'
+```
+
+### Anti-patterns
+
+❌ Forget `no text no logo` → wasted generations
+❌ Low-quality / blurry / off-brand reference → output inherits the flaws
+❌ Skip the verification step → social shares break silently
+❌ Stash generated images outside `/uploads/` → Rank Math + LiteSpeed can't reference them as attachments
+
 ## Related
 
 - [`templates/snippets/og-image-generator.php`](../templates/snippets/og-image-generator.php) — PHP GD recipe + WP attachment integration

@@ -245,6 +245,116 @@ After bulk update, cache may serve old content. See [`litespeed-cache-mgmt.md`](
 
 Bulk update requires `edit_others_posts` capability. Use App Password from admin/editor account, NOT contributor.
 
+## Master dataset pattern — Python module as single source of truth
+
+When bulk-updating N items that share the same field structure (portfolio items, products, team members, courses, articles), **extract the data into a Python module** and have the bulk script import it. Don't hardcode dataset entries in the script itself.
+
+### Why
+
+| Concern | Hardcoded in script | External dataset module |
+|---|---|---|
+| Edit a fact (e.g. event date) | Find + replace in script | Edit one line in dataset, no script change |
+| Re-run after edit | Re-read script logic | Re-import dataset, logic untouched |
+| Code review / diff | Mixed: data + logic | Separated: data diff is clear, script unchanged |
+| Type-safety / IDE autocomplete | None (strings everywhere) | Python dict fields → IDE shows keys |
+| Reusable across multiple scripts | Copy-paste | Import in N scripts |
+
+### Structure
+
+```
+scripts/
+├── portfolio_data.py        # the dataset (data only, no logic)
+├── update_seo.py            # imports dataset, updates SEO meta
+├── update_schema.py         # imports same dataset, adds JSON-LD schema
+└── verify.py                # imports same dataset, smoke-checks each item live
+```
+
+### `portfolio_data.py` shape
+
+```python
+PORTFOLIO_ITEMS = [
+    {
+        "id":         3437,                                       # WP post ID
+        "slug":       "event-x-tour-stop-1",
+        "artist":     "Performer Name",
+        "event_name": "Event Name — Tour Stop 1",
+        "type":       "concert",                                  # categorical, drives schema choice
+        "year":       2024,
+        "date":       "2024-04-13",
+        "city":       "TP.HCM",
+        "city_en":    "Ho Chi Minh City",
+        "capacity":   "15000",
+        "tech":       "48 cue pyro + Cold Spark + Laser + CO2",
+        "fkw":        "<focus keyword string for SEO>",
+        "seo_title":  "<formatted SEO title>",
+        "seo_desc":   "<full 150-160 char description>",
+    },
+    # ... 24 more items, same shape
+]
+
+# Type-to-schema dispatch — adding a new event type = one dict entry
+TYPE_TO_SCHEMA = {
+    "concert":   "Festival",
+    "corporate": "BusinessEvent",
+    "wedding":   "SocialEvent",
+}
+```
+
+### Bulk script imports + iterates
+
+```python
+from portfolio_data import PORTFOLIO_ITEMS, TYPE_TO_SCHEMA
+
+for it in PORTFOLIO_ITEMS:
+    # Update SEO meta via Rank Math
+    call_post("rankmath-mcp/update-meta", {
+        "id":              it["id"],
+        "focus_keyword":   it["fkw"],
+        "seo_title":       it["seo_title"],
+        "seo_description": it["seo_desc"],
+        "canonical_url":   f"https://<site>/portfolio/{it['slug']}/",
+    })
+
+    # Add Event schema (subtype dispatched by type)
+    schema_type = TYPE_TO_SCHEMA.get(it["type"], "Event")
+    call_post("rankmath-mcp/update-meta", {
+        "id":   it["id"],
+        "meta": {f"rank_math_schema_{schema_type}": build_event_schema(it, schema_type)},
+    })
+```
+
+### Benefits compounding
+
+- **Single source of truth**: fix the date once, both SEO + Schema update next run
+- **Re-runnable**: scripts idempotent — rerun after edit is safe
+- **Extensible**: add a field → one dict update + one accessor in script
+- **Cross-script reuse**: same `PORTFOLIO_ITEMS` powers SEO update, schema injection, content-reference audit, dashboard generation
+
+### Real-world result
+
+One bulk operation: 25 portfolio items × 14 fields = **350 data points centralized** in one Python module. SEO update + schema injection + verify across 25 items: 0 errors, 100% match. Adding a 26th item: append one dict, rerun — no script change.
+
+### When to escalate from Python dict to a database
+
+| Item count | Recommendation |
+|---|---|
+| < 50 | Python dict (`portfolio_data.py`) — easiest |
+| 50–200 | Still Python dict, but consider splitting by type into multiple modules |
+| 200–1000 | SQLite — keep dataset query-able, support partial-update scripts |
+| > 1000 | PostgreSQL or other DB; treat the WP site as a view-layer |
+
+The skill's default recommendation is **Python dict module** for almost everything — you rarely cross 200 items per bulk-update concern.
+
+### Anti-patterns
+
+❌ **Mixing data + logic in same file** — code review noise; data changes look like logic changes in git diff
+
+❌ **Maintaining the same dataset in multiple scripts** — duplicate-source drift; one script ships an updated fact, others lag
+
+❌ **CSV instead of Python dict** — loses type info, comments, nested structures; harder to merge-resolve in git
+
+❌ **Pulling dataset from the live WP site** — circular: you're trying to update the site, but you're also reading from the site for the input → race conditions, partial reads. Snapshot to a `.py` file once, then iterate
+
 ## Output artifacts
 
 Save to project's `audit/` folder:

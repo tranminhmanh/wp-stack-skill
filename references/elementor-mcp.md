@@ -669,6 +669,198 @@ update-widget(post_id=8004, element_id="2f0a7929", settings={"header_size": "h2"
 
 **Reusability**: Universal cho any heading-tag-flexible widget (Elementor heading, theme-post-title, Astra Customizer site-title). Apply when seeing render multiplicity that data doesn't explain.
 
+## Elementor heading widget strips SVG / HTML from `title` setting (`wp_kses_post`)
+
+**Symptom**: trying to inject an SVG icon inline with heading text via `update-widget`:
+
+```python
+mcp_call("update-widget", {
+    "post_id": 2932,
+    "element_id": "360307a3",
+    "settings": {"title": '<svg><use href="#icon-co2-jet"/></svg>CO₂ Jets — X-1'}
+})
+# Response: {"success": true, "element_id": "360307a3"}
+```
+
+Frontend renders:
+```html
+<h2 class="elementor-heading-title">CO₂ Jets — X-1</h2>
+<!-- SVG stripped silently — no error -->
+```
+
+**Root cause**: Elementor heading widget runs `wp_kses_post()` on the `title` field. SVG tags + `<use>` element are NOT in the default `allowed_html` list → stripped without error.
+
+### 3 workarounds (pick by use case)
+
+| Workaround | Pros | Cons |
+|---|---|---|
+| **1. Separate HTML widget BEFORE the heading** | Native widgets preserved, clean separation | Layout assumes 2 widgets in flow — flex/grid needs adjusting |
+| **2. Replace heading widget entirely with HTML widget** containing `<h2>` + SVG | Full HTML control | Loses Elementor heading widget styling presets (typography panel etc.) |
+| **3. JS runtime injection** after page load | Keep native widgets | Breaks SSR / SEO — Google scrapes the H2 WITHOUT the icon |
+
+### Recommendation
+
+Use option 1 (separate HTML widget) for SVG icons before headings. Add via `elementor-mcp-add-html` with the same `parent_id` as the heading widget:
+
+```python
+# Add HTML widget BEFORE the heading
+mcp_call("elementor-mcp-add-html", {
+    "post_id": 2932,
+    "parent_id": "<container_id>",
+    "position": 0,  # before heading
+    "html": '<svg width="32" height="32"><use href="#icon-co2-jet"/></svg>',
+})
+```
+
+For pages with many heading + icon pairs (>5), consider option 2 — convert the entire section to HTML widgets to avoid widget-count bloat.
+
+### Other widgets affected
+
+Same `wp_kses_post` filter applies to:
+- `text-editor` widget `editor` field (less strict — allows more tags)
+- `button` widget `text` field (strict — no HTML)
+- `icon-box` widget `title_text` field (strict)
+
+When in doubt: test with an SVG sample BEFORE building the full pipeline.
+
+## SVG upload blocked by host WAF — CSS `mask-image` data URI workaround
+
+**Symptom**: `POST /wp/v2/media` with an SVG file (MIME `image/svg+xml`):
+
+```bash
+curl -u "$U:$APP_PW" -X POST "$SITE/wp-json/wp/v2/media" \
+  -H "Content-Disposition: attachment; filename=\"icon.svg\"" \
+  -H "Content-Type: image/svg+xml" \
+  --data-binary "@./icon.svg"
+
+# Response: HTTP 500
+# {"code":"rest_upload_unknown_error","message":"Rất tiếc, bạn không được phép tải lên định dạng tệp tin này"}
+```
+
+**Root cause**: Most shared hosts (AZDIGI, similar) + Imunify360 WAF block SVG uploads by default — prevents XSS via SVG `<script>` payloads. The block is at the host / WAF level, not WordPress itself. You can't store SVG as standalone Media Library attachments.
+
+### Workaround — CSS `mask-image` with data URI
+
+For native Elementor icon-box widgets that need custom SVG icons: inline the SVG as a CSS `mask-image` data URI. The browser uses the SVG to MASK a CSS background color (mono-color result, but supports hover transitions).
+
+```css
+/* Hide the default Font Awesome icon */
+#post-224 .elementor-element-<wid> .elementor-icon i {
+  display: none !important;
+}
+
+/* Show the custom SVG via mask */
+#post-224 .elementor-element-<wid> .elementor-icon::before {
+  content: '';
+  display: block;
+  width: 60px;
+  height: 60px;
+  background-color: #0A1F44;                    /* the icon "color" */
+  -webkit-mask-image: url("data:image/svg+xml;utf8,<svg ...>...</svg>");
+  mask-image: url("data:image/svg+xml;utf8,<svg ...>...</svg>");
+  mask-repeat: no-repeat;
+  mask-position: center;
+  mask-size: contain;
+}
+```
+
+### URL-encoding the SVG for data URI
+
+```python
+import urllib.parse
+
+svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="..."/></svg>'
+
+# Preserve common SVG chars → human-readable, smaller output
+encoded = urllib.parse.quote(svg, safe="*'()/=,:;!?[]{}")
+data_uri = f'data:image/svg+xml;utf8,{encoded}'
+
+# Use in CSS: mask-image: url("<data_uri>")
+```
+
+`safe=` keyword controls which characters NOT to encode — preserving brackets / spaces / quotes makes the data URI readable AND smaller.
+
+### Trade-offs
+
+- ✓ No host upload needed → bypasses WAF restriction
+- ✓ Hover transitions work (`background-color` + `transform`)
+- ✓ No CORS, no XHR, no Media Library entry
+- ✗ Mono-color only (mask cuts shape, background-color fills)
+- ✗ ~500-800 chars per data URI → ~6 KB CSS overhead for 3 icons
+- ✗ Editable only in CSS source, not via wp-admin UI
+
+### When to use SVG-upload-allowed alternatives
+
+If the site host doesn't block SVG (some VPS hosts, Cloudflare R2, S3 + media offload), upload the SVG normally. Even if some hosts allow it, the `mask-image` pattern is still useful when:
+- You want a theme-able icon (color shifts via CSS, not file re-export)
+- You're injecting via Code Snippets / mu-plugin and don't want a Media Library dependency
+
+## Site-wide conversion tracking via Custom Code Snippet — multi-platform pattern
+
+**Extending** the "Elementor Pro Custom Code Snippets" section above with a real-world conversion-tracking recipe — fires events into GA4 + Meta Pixel + TikTok concurrently, all wrapped in `try/catch` so a missing platform doesn't break the others.
+
+### Usage
+
+```python
+mcp_call("elementor-mcp-add-code-snippet", {
+    "title":    "Conversion Tracking — Site-Wide",
+    "code":     TRACKING_JS,         # full JS shown below
+    "location": "body_end",
+    "priority": 5,
+    "status":   "publish",
+})
+```
+
+`location: body_end` ensures DOM is ready when the script runs — no need for `DOMContentLoaded` wrapper.
+
+### Multi-platform fire pattern
+
+```javascript
+function fire(eventName, params) {
+  // GA4 — gtag from Site Kit / Tag Manager
+  try { if (typeof gtag === 'function') gtag('event', eventName, params); } catch(e) {}
+  // Meta Pixel — fbq
+  try { if (typeof fbq === 'function') fbq('trackCustom', eventName, params); } catch(e) {}
+  // TikTok Pixel — ttq
+  try { if (typeof ttq === 'object' && ttq.track) ttq.track(eventName, params); } catch(e) {}
+}
+```
+
+Each platform's global is checked + wrapped — a missing global (pixel not installed yet) silently no-ops.
+
+### Event delegation for dynamic / late-bound elements
+
+Use capture-phase delegation on `document` to catch clicks on elements that may be injected after page load (Elementor lazy widgets, AJAX-loaded content, etc.):
+
+```javascript
+document.addEventListener('click', function(e) {
+  // Click-to-call
+  var phone = e.target.closest('a[href^="tel:"]');
+  if (phone) fire('click_to_call', { phone: phone.getAttribute('href').replace('tel:', '') });
+
+  // Email link click
+  var email = e.target.closest('a[href^="mailto:"]');
+  if (email) fire('click_to_email', { email: email.getAttribute('href').replace('mailto:', '') });
+
+  // Form submit button (delegate, not direct)
+  var submit = e.target.closest('.elementor-button[type="submit"], .wpcf7-submit, .ff-btn-submit');
+  if (submit) fire('form_submit_click', { form: submit.closest('form')?.getAttribute('id') });
+}, true);  // capture: true = runs before bubble handlers
+```
+
+`closest()` matches the click target OR its ancestors → catches clicks on icon children inside a wrapping anchor (e.g. a phone icon inside `<a href="tel:...">`).
+
+### Future-proof
+
+`fire()` calls `fbq` / `ttq` even when the pixel isn't installed yet — the `try/catch` silently skips. When you install Meta Pixel later, all your existing events automatically start flowing. No need to redeploy the snippet.
+
+### Anti-patterns
+
+❌ **Inline tracking JS on individual buttons** — fragile (button changes break tracking), inconsistent (forgot one button)
+❌ **Skip the `try/catch`** — one missing platform breaks the others' fire
+❌ **Use `addEventListener` without capture phase** — late-bound elements miss events
+❌ **Fire same event into multiple platforms via separate code blocks** — DRY: one `fire()` helper, three platform calls inside
+
 ## WP Admin upload (`async-upload.php`) vs REST `/wp/v2/media`
 
 The two upload endpoints take **different code paths**:

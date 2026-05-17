@@ -497,6 +497,144 @@ REST direct path always works regardless of `mcp.public` — it goes through the
 
 Discovered: weekly distillation 2026-05-13 (a Rank Math wrapper plugin missed the flag in v2.0.4 → patched v2.0.5 after the silent-fail symptom).
 
+## WP REST trash post requires DELETE method (POST `status: trash` rejected)
+
+**Symptom**: trying to move a post to trash via REST:
+
+```bash
+curl -u "$U:$APP_PW" -X POST "$SITE/wp-json/wp/v2/posts/123" \
+  -d '{"status": "trash"}'
+# → 400 Bad Request: enum value "trash" not allowed
+```
+
+The `status` field on `POST /wp/v2/posts/<id>` accepts only `publish | future | draft | pending | private`. There is no `trash` value.
+
+### Correct method
+
+```bash
+# Move to trash (recoverable)
+curl -u "$U:$APP_PW" -X DELETE "$SITE/wp-json/wp/v2/posts/123"
+
+# Permanent delete (bypass trash)
+curl -u "$U:$APP_PW" -X DELETE "$SITE/wp-json/wp/v2/posts/123?force=true"
+```
+
+Same pattern for `/wp/v2/pages/<id>`, `/wp-json/wc/v3/products/<id>`, etc.
+
+### Why this confuses people
+
+WP REST schema reads as if `status` is the universal "post state" field. It is — for non-trash transitions. Trash is special-cased because it triggers different lifecycle hooks (`wp_trash_post`, `trashed_post` action) than a normal status change. The REST API mirrors this by routing trash through `DELETE`.
+
+**Reusability**: universal for all WP REST `delete` operations.
+
+## REST `content.rendered` pagination URLs use the REST endpoint URI, NOT canonical
+
+**Symptom**: `GET /wp-json/wp/v2/pages/123?context=edit` returns content with pagination links like:
+
+```html
+<a href="/wp-json/wp/v2/pages/123/page/2/">Next →</a>
+```
+
+instead of the canonical:
+
+```html
+<a href="/about-us/page/2/">Next →</a>
+```
+
+### Root cause
+
+WordPress generates pagination + relative URLs in `the_content()` based on `$_SERVER['REQUEST_URI']`. When the REST controller renders content for the response, `REQUEST_URI` is `/wp-json/...` — not the post's canonical URL.
+
+### Implications
+
+When auditing pagination URLs / canonical URLs / oEmbed URLs via the REST API: **don't trust `content.rendered` from the REST response**. The URLs in there are REST-URI-relative, not canonical.
+
+### Workaround — frontend fetch
+
+For audit purposes, fetch the actual page via a browser-style GET, not via REST:
+
+```bash
+# WRONG — REST request
+curl -u "$U:$APP_PW" "$SITE/wp-json/wp/v2/pages/123" | jq -r '.content.rendered' | grep -oE 'href="[^"]+page/[0-9]+"'
+
+# RIGHT — frontend request with browser User-Agent
+curl -s -H "User-Agent: Mozilla/5.0" "$SITE/<page-slug>/?cb=$(date +%s)" \
+  | grep -oE 'href="[^"]+page/[0-9]+"'
+```
+
+### When this matters
+
+- **Audit pagination structure** across paginated archives
+- **Verify canonical URLs** match expected pattern
+- **oEmbed audit** — `the_content()` filters embedded URLs differently in REST context
+
+### When this doesn't matter
+
+If you're only reading `content.raw` (raw post content, no filter applied) — that's the literal DB value, no URL rewriting. REST audit is safe.
+
+**Reusability**: universal — applies to all `content.rendered` reads from WP REST.
+
+## Application Password auth — REST returns 200, wp-admin returns 302 (NOT fatal)
+
+**Symptom**: after fixing a site-wide PHP fatal, you verify:
+
+```bash
+curl -s -o /dev/null -w "%{http_code}\n" -u "$U:$APP_PW" \
+  "$SITE/wp-admin/"
+# → 302
+```
+
+302 — interpreted as "site still broken" → continued debugging. Hours wasted before realizing the site was already healthy.
+
+### Root cause
+
+Application Password authenticates the REST API ONLY. It does NOT create an admin session cookie. `wp-admin/` requires a session cookie → no cookie → redirected to `wp-login.php`. The 302 is healthy behavior, not an error.
+
+### Correct verification post-fix
+
+```bash
+# 1. REST endpoint (App Password auth works) — should be 200
+curl -s -o /dev/null -w "%{http_code}\n" -u "$U:$APP_PW" \
+  "$SITE/wp-json/wp/v2/users/me"
+# 200 ✓ = site responding + auth working
+
+# 2. Frontend (no auth) — should be 200
+curl -s -o /dev/null -w "%{http_code}\n" \
+  "$SITE/"
+# 200 ✓ = frontend rendering
+
+# 3. error_log — check for NEW fatal entries (not history)
+# Use server-side filter to count Fatal entries since the fix:
+# (e.g. read-debug-log ability with filter=Fatal + time-window after fix timestamp)
+```
+
+### Real fatal = 500, NOT 302
+
+| HTTP code | Frontend URL | wp-admin URL | Meaning |
+|---|---|---|---|
+| 200 | / | wp-admin | Frontend OK, dashboard requires session (App Pw can't access) |
+| 302 | / | wp-admin → wp-login.php | Healthy — redirect to login. Not a fatal. |
+| 500 | / OR wp-admin | (server error) | **REAL fatal — debug this** |
+| 502 / 503 | / | (server unavailable) | PHP-FPM crash, host issue |
+| 404 | wp-admin | (admin dir missing) | Site corruption or moved |
+
+### Healthy site post-fix verification checklist
+
+```bash
+# A. REST + auth check
+[ "$(curl -s -o /dev/null -w "%{http_code}" -u "$U:$APP_PW" "$SITE/wp-json/wp/v2/users/me")" = "200" ] && echo "✓ REST + auth"
+
+# B. Frontend check
+[ "$(curl -s -o /dev/null -w "%{http_code}" "$SITE/")" = "200" ] && echo "✓ Frontend"
+
+# C. error_log clean (no new fatal since N seconds ago)
+# (use read-debug-log filter + count, or grep error_log)
+```
+
+If all 3 pass → site is healthy. wp-admin 302 is irrelevant to that determination.
+
+**Reusability**: universal for any post-fix verification with App Password tooling.
+
 ## Liên quan
 
 - [`mcp-architecture.md`](mcp-architecture.md) — vì sao endpoint MCP server tách biệt khỏi abilities registry
