@@ -6,10 +6,10 @@ The tested combination, deployed in production. Do not change on a whim — any 
 
 | Component | Tool | Version | Note |
 |---|---|---|---|
-| WordPress core | WordPress | 6.8+ | Auto-update minor versions |
-| Theme | Astra | Latest free | NOT Pro |
-| Page builder | Elementor | 3.20+ | Flexbox Containers ON |
-| Page builder Pro | Elementor Pro | 3.20+ | License $59–99/year |
+| WordPress core | WordPress | 6.8+ (6.9+ recommended for Abilities API) | Auto-update minor versions |
+| Theme | Astra Free OR Pro | 4.13+ | Astra Pro acceptable on inherited sites (multiple inherited production sites run Astra Pro v4.13.x); for new builds Astra Free + Elementor Pro thường đủ — xem §"Astra Pro vs Elementor Pro feature overlap" |
+| Page builder | Elementor | 3.20+ (4.0+ recommended) | Flexbox Containers ON; v4.0+ supports atomic widgets — xem [`elementor-mcp.md`](elementor-mcp.md) §atomic |
+| Page builder Pro | Elementor Pro | 3.20+ (4.0+ recommended) | License $59–99/year |
 | MCP server | msrbuilds/elementor-mcp | v1.4+ | GitHub release |
 | MCP adapter | WordPress MCP Adapter | Latest | Required for MCP |
 | Custom fields | ACF Free | Latest | Simple |
@@ -88,8 +88,8 @@ The tested combination, deployed in production. Do not change on a whim — any 
 - Jetpack (overkill, slow)
 - Elementor addon packs (Essential Addons, Premium Addons, Crocoblock JetElements) — bloat. Use native widgets + ACF / JetEngine.
 - WPBakery, Divi, Bricks, Beaver Builder — not in the stack
-- Themes other than Astra — Astra Free only
-- Astra Pro — overlaps with Elementor Pro (see "Astra Pro vs Elementor Pro feature overlap" below)
+- **Themes other than Astra** — Astra preferred. If inherited site uses Flatsome / UX Builder / WPBakery / Bricks / Divi, document trong project's CLAUDE.md + xem [`non-standard-stacks.md`](non-standard-stacks.md) cho fallback patterns. Don't propose Elementor MCP tools nếu builder khác đang dùng.
+- **Astra Pro** — acceptable, but overlaps with Elementor Pro features (see §"Astra Pro vs Elementor Pro feature overlap" below). For NEW builds, Astra Free + Elementor Pro is cheaper + sufficient.
 
 ## Astra Pro vs Elementor Pro feature overlap
 

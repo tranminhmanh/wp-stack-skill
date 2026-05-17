@@ -5,6 +5,47 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.0] — 2026-05-17 (reconcile cross-project reality)
+
+Cross-project audit reveals skill diverged từ deployed reality on 5+ inherited production sites. 3 hard contradictions resolved + 2 new files added để cover gaps.
+
+### Reconciled — 3 file edits resolving skill ↔ reality contradiction
+
+- **`references/stack.md`** — line 10 Astra "NOT Pro" → "Free OR Pro" (3+ inherited sites running Astra Pro 4.13.x in production). Anti-pattern softened.
+- **`references/mcp-architecture.md`** — added §"Merged single-endpoint (ALTERNATIVE pattern — valid)" với trade-off table. A B2B wholesale site's 212-tool merged single endpoint recognized as legitimate choice, no longer treated as anti-pattern.
+- **`SKILL.md`** — Core principle #1 "Native widget first" softened thành "Native widget preferred — HTML widget acceptable for legitimate cases" với 5 explicit valid HTML widget cases (JSON-LD, embeds, SVG, badges, hero blocks).
+
+### Added — 2 new reference files
+
+- **`references/non-standard-stacks.md`** (~7KB) — Flatsome + UX Builder, WPBakery, Bricks, Divi, Gutenberg-only, Kadence Blocks fallback patterns. Decision tree khi nào migrate builder. Template documenting non-standard stack trong project CLAUDE.md. **Stops Claude from proposing Elementor MCP tools on non-Elementor sites**.
+- **`workflows/deploy-rankmath-mcp-wrapper.md`** (~9KB) — 4 distribution paths với decision tree: Path A (plugin zip + wp-admin upload), Path B (MU-plugin bridge), Path C (custom-namespace fork), Path D (merged single-endpoint). Pin v2.0.9 known-good. References real-world deployments across 4 inherited production sites. Common gotchas table. Project naming convention recommendation.
+
+### Anti-patterns — updated
+
+`SKILL.md` Anti-patterns section:
+- ~~"Suggesting Divi / WPBakery / Bricks (the stack is Elementor only)"~~ → softened for inherited sites; see new `non-standard-stacks.md`
+- ~~"Suggesting Hello / GeneratePress / OceanWP themes (the stack is Astra only)"~~ → softened for inherited; document trong project CLAUDE.md
+- ADDED: "Proposing Elementor MCP tools on a site that doesn't have Elementor (check stack first)"
+- ADDED: "Using HTML widget for everything" — clarified native preferred with explicit exception list
+
+### Insight ↔ skill alignment
+
+7 weekly insights promoted to PROMOTED-TO-SKILL trong the source project's `insights.md` index:
+- MU-plugin Closure suppress → `mu-plugin-patterns.md` Pattern 1 (was promoted earlier, confirmed)
+- WP App Password REST vs wp-admin 302 → `wp-abilities.md` §App Password scope (new)
+- PHP error_log location CloudLinux/cPanel → `troubleshooting.md` §1 (new file)
+- Server-side log filter primitive → `troubleshooting.md` §2 (new file)
+- PHP opcache transient window → `troubleshooting.md` §3 (new file)
+
+### Coverage status
+
+- **Astra + Elementor** (default) — fully covered, no changes
+- **Astra Pro** — now acknowledged as acceptable (was anti-pattern)
+- **Flatsome + UX Builder** — basic coverage via `non-standard-stacks.md`
+- **WPBakery / Divi / Bricks / Kadence** — fallback patterns documented
+- **Merged single-endpoint MCP** — recognized as valid pattern
+- **rankmath-mcp distribution** — 4 paths canonical recipe
+
 ## [0.8.0] — 2026-05-17
 
 Round 10 weekly distillation. ~2,400 lines of new insights this week across 4 production sites. 14 patterns promoted into 11 file updates + 3 new reference files. Brand-leak scan + commit-message scan run pre-push per the established governance.

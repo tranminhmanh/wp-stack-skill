@@ -35,7 +35,7 @@ Summary:
 
 ## Core principles
 
-1. **Native widget first** — do not use HTML widgets except for third-party embeds
+1. **Native widget preferred — HTML widget acceptable for legitimate cases** — Native Elementor widget (heading / text-editor / button / icon-list / accordion / image / price-list / testimonial-carousel) là default cho content thông thường vì performance + accessibility + Elementor-aware editing. HTML widget acceptable cho: (a) JSON-LD schema injection, (b) third-party embeds (Maps, social), (c) inline SVG icons với currentColor, (d) custom badge/sticker designs không tồn tại native, (e) hero blocks cần exact control. Anti-pattern: dùng HTML widget cho mọi paragraph/heading content (lose Elementor styling, hurt portability, break responsive).
 2. **Flexbox Container** — do not use the legacy Section/Column system
 3. **Design tokens** — read `references/design-tokens.md`, do not invent numbers
 4. **Verify after write** — call `get-page-structure` after every MCP write
@@ -96,17 +96,22 @@ Summary:
 | Code Snippets plugin REST API (audit + surgical edit) | `references/code-snippets.md` |
 | Google Business Profile setup (description + category) | `references/gbp-setup.md` |
 | MU-plugin patterns (suppress upstream Closure, bridge, polyfill) | `references/mu-plugin-patterns.md` |
+| PHP error_log + opcache + huge log filter (shared hosting debug) | `references/troubleshooting.md` |
+| Site uses Flatsome / WPBakery / Bricks / non-standard builder | `references/non-standard-stacks.md` ⚠️ DON'T propose Elementor MCP tools |
+| Deploy rankmath-mcp wrapper plugin (4 distribution paths) | `workflows/deploy-rankmath-mcp-wrapper.md` |
 
 ## Anti-patterns — STRICTLY avoid
 
-- Suggesting Divi / WPBakery / Bricks (the stack is Elementor only)
-- Suggesting Hello / GeneratePress / OceanWP themes (the stack is Astra only)
+- ~~Suggesting Divi / WPBakery / Bricks (the stack is Elementor only)~~ Recommending Divi / WPBakery / Bricks **for a NEW build** (Elementor is canonical). For inherited sites already using these builders, see `references/non-standard-stacks.md` — don't propose builder migration unless owner explicit
+- ~~Suggesting Hello / GeneratePress / OceanWP themes (the stack is Astra only)~~ Suggesting other themes **for a NEW build** (Astra is canonical). Inherited Flatsome / GeneratePress sites: document trong CLAUDE.md + work within their constraints
+- Proposing Elementor MCP tools on a site that doesn't have Elementor (check stack first — see `non-standard-stacks.md` §Detection)
 - Editing production without a backup
 - Installing a plugin outside the stack without asking
 - Suggesting "rebuild from scratch" when an incremental fix is possible
 - Generating Vietnamese (or other non-English) copy without flagging it for native review
 - Skipping the mobile breakpoint
-- Inline CSS instead of widget settings
+- Inline CSS instead of widget settings (legitimate exceptions: see `references/code-snippets.md` global CSS pattern)
+- Using HTML widget for everything (NATIVE preferred for content; HTML acceptable for JSON-LD schema, third-party embeds, inline SVG, custom badges)
 - HTML widgets for text / button / heading
 - **Guessing SSH alias, path, or database name** when `CLAUDE.md` does not have them
 - **Running production commands** without confirming with the user

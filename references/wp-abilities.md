@@ -73,6 +73,50 @@ curl -u "admin:xxxx xxxx xxxx xxxx xxxx xxxx" \
   "https://<site>/wp-json/wp-abilities/v1/abilities/elementor-mcp/list-pages/run?input[post_type]=page"
 ```
 
+### Application Password scope — REST works, wp-admin does NOT
+
+**The trap**: Application Password authenticates **REST API only** (HTTP 200 cho `/wp-json/...`), KHÔNG create admin session cookie → `/wp-admin/` curl với App Password trả **HTTP 302 redirect** to `/wp-login.php`. Easy false-positive trong post-fix verification: agent kết luận "site still broken" khi thấy 302, thực ra đó là behavior bình thường.
+
+**Why this happens**:
+- WordPress `/wp-admin/` route gọi `auth_redirect()` early → checks for **admin session cookie** (`wordpress_logged_in_<hash>` set by wp-login.php form submit), NOT Authorization header.
+- Application Password được intercept bởi `application_password_authenticate` filter trong `rest_api_init` chain — chỉ authenticates REST API requests.
+- Khi non-cookie request hit `/wp-admin/` → `auth_redirect()` sends `Location: /wp-login.php?redirect_to=...` với status 302.
+
+**Diagnostic reference** (sample curl trên healthy site):
+```bash
+# REST API endpoint (App Password auth works)
+curl -u admin:APP_PW https://site/wp-json/wp/v2/users/me
+→ HTTP 200, JSON user payload ✓
+
+# wp-admin landing (Basic auth không tạo admin session)
+curl -u admin:APP_PW https://site/wp-admin/
+→ HTTP 302, redirect to /wp-login.php (NOT an error)
+
+# Frontend (no auth needed)
+curl https://site/
+→ HTTP 200, full HTML ✓
+```
+
+**Implication for diagnostics**:
+| Endpoint | Code | Meaning |
+|---|---|---|
+| `/wp-json/wp/v2/users/me` | 200 | ✅ Auth + DB + WP core healthy |
+| `/wp-admin/` | 302 | ✅ **Expected** — redirect to login, NOT a fatal |
+| Frontend `/` | 200 | ✅ Rendering + theme + plugins load OK |
+| `/wp-admin/` | 500 | 🚫 Real fatal — investigate |
+| Frontend `/` | 503 | 🚫 Critical error template (WP fatal handler engaged) |
+
+**Healthy-site post-fix verification checklist** (4 signals):
+1. `curl -u user:app_pw <site>/wp-json/wp/v2/users/me` → 200 (auth + DB OK)
+2. `curl <site>/` → 200 với reasonable size (frontend rendering OK)
+3. `read-debug-log filter=Fatal` — count NEW entries since fix timestamp (should be 0)
+4. Plugin status REST `/wp-json/wp/v2/plugins/<slug>` → confirm expected active/inactive
+
+**Workarounds nếu thật sự cần admin UI access via script**:
+- Cookie-based auth: login qua POST `/wp-login.php`, capture cookies, use cookie jar (complex, fragile).
+- WP-CLI via SSH: native admin operations (best path nếu có SSH).
+- Custom MCP ability: build plugin abilities cho specific admin tasks (vd `rankmath-mcp/update-titles-option` bypass admin GUI entirely).
+
 ## Helper script (Python stdlib only)
 
 Ready-to-copy template. Đặt ở `<project>/scripts/wp_ability.py` hoặc dùng template từ `templates/snippets/wp-ability-helper.py` (chưa tạo, làm khi cần).
