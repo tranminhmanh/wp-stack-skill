@@ -154,6 +154,217 @@ Sau khi user revoke App Password phía WP, connector vẫn còn entry trong `~/.
 | Connected ✓, tool xuất hiện, gọi 404 | Connector trỏ sai endpoint | Verify URL trong `claude mcp get`, so với `/wp-json/mcp` route list |
 | Random `connection closed` mid-session | Network blip / WP timeout | Restart session, kiểm tra LiteSpeed throttle, php-fpm worker |
 
+## HTTP MCP vs stdio bridge — decision matrix (long-term standard: HTTP)
+
+Two architectures for connecting Claude Code / Claude Desktop to WordPress MCP:
+
+### Architecture A — stdio bridge (`mcp-wp-abilities` npm package)
+
+The stdio bridge runs as a local Node.js process. It fetches the site's REST list of abilities at startup, then exposes each ability as its own MCP tool (e.g. 210 tools for a site with 210 abilities). Claude Code's tool registry sees them all as discrete `mcp__<site>__<ability>` tools.
+
+```
+Claude Code session
+       │
+       ▼  stdio
+   Node.js process
+       │
+       ▼  HTTPS + Basic auth
+   /wp-json/wp-abilities/v1/abilities (registry)
+   /wp-json/wp-abilities/v1/abilities/<name>/run (execute)
+```
+
+### Architecture B — HTTP MCP (`mcp-adapter` plugin)
+
+The site's `mcp-adapter` plugin self-hosts an MCP server at `/wp-json/mcp/<plugin>-server`. Claude Code's connector talks MCP protocol over HTTPS directly to that endpoint. The connector exposes only 3 META tools per server: `discover-abilities`, `get-ability-info`, `execute-ability`. To run a specific ability, Claude calls `execute-ability(name: "...", parameters: {...})`.
+
+```
+Claude Code session
+       │
+       ▼  HTTPS + MCP protocol + Basic auth
+   /wp-json/mcp/<plugin>-server (MCP server)
+       │
+       ▼  in-process
+   ability callback (registered via wp_register_ability)
+```
+
+### Comparison at scale (10+ sites)
+
+| Criteria | stdio | HTTP |
+|---|---|---|
+| Setup time per site | 1–2 hours (mu-plugin patches, npm install, config) | **5 minutes** (`claude mcp add -t http -s user ...`) |
+| Maintenance on plugin update | mu-plugin may break (whitelist + pagination + fuzzy match logic) | **Auto-detects** new abilities |
+| Context tokens for 10 sites | ~2,100 tool schemas loaded | **30 schemas** (~70× lighter) |
+| Failure surface | npm + Node + opcache + LSCache + MSYS path + Imunify quarantine + fuzzy regex | HTTP up/down + App Password expiry |
+| Chat ergonomic | ✓ Autocomplete 210 tools by name | ✗ Need `discover_abilities` first to see options |
+| Token cost of one tool call | Lower (direct tool dispatch) | Slightly higher (META tool overhead per call) |
+
+### Decision rule (long-term standard going forward)
+
+**Default: HTTP MCP for all new sites.** The 5-minute setup + auto-detect + 70× context savings + lower failure surface outweighs the autocomplete loss.
+
+**Exception — choose stdio when**:
+- Site is in heavy build-phase (rebuilding 50+ pages) and autocomplete saves real time
+- You want to do tool-name-driven discovery in chat without an explicit `discover` step
+- Pre-existing stdio investment + stable mu-plugin already deployed
+
+**Migrate from stdio → HTTP when**:
+- Site shifts from build phase to maintenance mode
+- mu-plugin patches become a maintenance burden
+- Adding multi-site (3+) — the context-token math tips heavily toward HTTP
+
+### Compensate for HTTP's lost autocomplete — auto-dump ability catalog
+
+The biggest UX cost of HTTP is "you can't see what abilities exist until you call `discover`". Compensate by dumping the ability list to `.ability-catalog.md` in the project root, ONCE after setup:
+
+```bash
+# Run after each new connector setup
+mcp__<site>__mcp-adapter-discover-abilities | jq -r '.[] | "- `\(.name)` — \(.description)"' \
+  > .ability-catalog.md
+```
+
+Reference `.ability-catalog.md` from the project's `CLAUDE.md`:
+```markdown
+## Available abilities
+
+See `.ability-catalog.md` for the full list (auto-dumped after MCP setup).
+```
+
+Claude reads `CLAUDE.md` at session start → loads `.ability-catalog.md` once → knows every ability name without consuming a tool-list-load cycle. Best of both worlds: HTTP's efficiency + stdio's discoverability.
+
+## Windows — edit `~/.claude.json` manually when no `claude` CLI on PATH
+
+On macOS / Linux, `claude mcp add ...` is the standard install path. On Windows, the `claude` CLI may not be on PATH yet (especially fresh installs of Claude Desktop / Claude Code).
+
+### Manual edit fallback — 3 scope locations
+
+`~/.claude.json` is a single JSON file. Edit it directly. There are 3 places to add an MCP server config; pick by scope:
+
+```jsonc
+{
+  // SCOPE 1: USER (global, applies to every project)
+  "mcpServers": {
+    "<site>-elementor": {
+      "type": "http",
+      "url": "https://<site>/wp-json/mcp/elementor-mcp-server",
+      "headers": {
+        "Authorization": "Basic <base64-of-user:app-pw>"
+      }
+    }
+  },
+
+  // SCOPE 2: PROJECT-LOCAL (only when you open a specific project dir)
+  "projects": {
+    "C:\\Users\\<user>\\path\\to\\project": {
+      "mcpServers": {
+        "<site>-elementor": {
+          "type": "http",
+          "url": "...",
+          "headers": { ... }
+        }
+      }
+    }
+  }
+}
+```
+
+```jsonc
+// SCOPE 3: PROJECT-CHECKED-IN (commit to repo for team)
+// File: <project>/.mcp.json
+{
+  "mcpServers": {
+    "<site>-elementor": {
+      "type": "http",
+      "url": "...",
+      "headers": { "Authorization": "Basic <base64>" }
+    }
+  }
+}
+```
+
+### Putting the same config in all 3 → guaranteed pickup
+
+If you want belt-and-suspenders certainty: set the same config in all 3 locations. Pickup priority is `project/.mcp.json` → `~/.claude.json` projects key → `~/.claude.json` global `mcpServers`. Having it in all three means at least one always fires.
+
+### Verify after manual edit
+
+```bash
+# Windows PowerShell
+Get-Content $env:USERPROFILE\.claude.json | ConvertFrom-Json | Select-Object -ExpandProperty mcpServers
+
+# Or open Claude Code → check Settings → MCP Servers list
+```
+
+Then restart Claude Code session to load tool schemas (see "Restart session" step above).
+
+## HTTP MCP transport requires `initialize` handshake (POST `tools/list` directly = 400)
+
+When debugging or scripting against an HTTP MCP server directly (curl / Python urllib), you cannot just POST `tools/list` or `tools/call` and expect a response. The MCP protocol requires an initial handshake.
+
+### Symptom
+
+```bash
+curl -X POST "https://<site>/wp-json/mcp/<plugin>-server" \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+# → HTTP 400 Bad Request: missing session
+```
+
+### Correct flow — 2-step
+
+**Step 1**: POST `initialize` to establish session:
+
+```bash
+curl -i -X POST "https://<site>/wp-json/mcp/<plugin>-server" \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -H "Authorization: Basic <base64>" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "initialize",
+    "params": {
+      "protocolVersion": "2024-11-05",
+      "capabilities": {},
+      "clientInfo": {"name": "test-client", "version": "1.0.0"}
+    }
+  }'
+
+# Response includes header:
+#   Mcp-Session-Id: <session-uuid>
+```
+
+**Step 2**: Subsequent requests include the session header + `MCP-Protocol-Version` header:
+
+```bash
+curl -X POST "https://<site>/wp-json/mcp/<plugin>-server" \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -H "Authorization: Basic <base64>" \
+  -H "Mcp-Session-Id: <session-uuid>" \
+  -H "MCP-Protocol-Version: 2024-11-05" \
+  -d '{"jsonrpc":"2.0","id":2,"method":"tools/list"}'
+```
+
+### Required headers per request
+
+| Header | Why |
+|---|---|
+| `Content-Type: application/json` | Standard JSON body |
+| `Accept: application/json, text/event-stream` | MCP may return SSE stream for streaming responses |
+| `Authorization: Basic <base64>` | App Password auth |
+| `Mcp-Session-Id: <uuid>` | After initialize — links request to session |
+| `MCP-Protocol-Version: 2024-11-05` | Pin protocol version (current as of writing) |
+
+### When you might hit this
+
+- Writing a custom MCP client (not Claude Code) against the WP MCP endpoint
+- CI/CD smoke test that pings the MCP server to verify it's alive
+- Debugging "why isn't Claude Code seeing my tools?" — run the handshake manually to isolate transport vs registration issues
+
+### When you don't need this
+
+When using `claude mcp add ... -t http ...` via the CLI, Claude Code handles the handshake internally. You only see this if you bypass the CLI.
+
 ## Liên quan
 
 - [`references/mcp-architecture.md`](../references/mcp-architecture.md) — kiến trúc 1 plugin = 1 endpoint

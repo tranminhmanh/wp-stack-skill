@@ -516,6 +516,84 @@ When a hub page contains multiple "items" belonging to the same main service (e.
 
 Eligible for **Sitelinks Search Box** + structured product / service rich result in SERP.
 
+## Duplicate `og:image` / meta tag detection — 3-layer audit
+
+Live audit of nearly every inherited WordPress site finds the same problem: `<meta property="og:image">` appears 2–4 times in the page head. Social platforms pick the first OR last (depends on the platform); the duplicates create unpredictable previews.
+
+3 emission sources to audit, in priority order:
+
+### Layer 1 — SEO plugin (Rank Math / Yoast)
+
+Outputs via `wp_head` priority ~1, usually at the top of `<head>`. This is the source of truth IF configured correctly. Leave this one alone (or update via Rank Math settings); remove the duplicates from layers 2 + 3.
+
+```bash
+# Grep for the SEO plugin's signature
+curl -s "https://<site>/" | grep -B1 '<meta property="og:image"' | head -5
+# Look for `<!-- Rank Math -->` or `<!-- Yoast SEO -->` comment markers
+```
+
+### Layer 2 — Code Snippets entries (legacy hardcoded)
+
+Common on sites that existed before Rank Math was installed. The previous developer hardcoded `og:image` in a Code Snippet to ship a working OG image fast. That snippet now duplicates Rank Math's emission.
+
+Find them via the Code Snippets REST API (see [`references/code-snippets.md`](code-snippets.md)):
+
+```bash
+curl -u "$U:$APP_PW" "$SITE/wp-json/code-snippets/v1/snippets" \
+  | jq '.[] | select(.code | test("og:image|twitter:image|favicon|<link rel=\"icon\""; "i")) | {id, name}'
+```
+
+Each match is a candidate to clean up. Typical findings:
+- `legacy-og-image-fix.php` — hardcoded site-wide OG URL
+- `social-meta-shim.php` — emits og:title + og:image + og:url block
+- `favicon-overrides.php` — sometimes also emits OG image as side effect
+
+Surgical fix: remove the duplicate block from the snippet via REST POST update. Don't deactivate the whole snippet (it may contain other useful code).
+
+### Layer 3 — Theme hooks / Customizer / `wp_site_icon()`
+
+Astra Customizer's "Site Icon" setting auto-emits favicon `<link>` tags AND sometimes `msapplication-TileImage`. Some themes chain `og:image` emission right after the icon block. Plugin/snippet emissions may also fire on `wp_head` priority > 10.
+
+```bash
+# Count layers — any >1 is a cleanup target
+curl -s "https://<site>/" | grep -c '<meta property="og:image"'
+curl -s "https://<site>/" | grep -c '<meta property="twitter:image"'
+curl -s "https://<site>/" | grep -c '<link rel="icon"'
+```
+
+### Triage workflow
+
+```
+1. Render page → grep counts for og:image / twitter:image / icon
+2. If counts > 1, identify which Layer (1 / 2 / 3) each emission belongs to via:
+   - View page source, note line numbers
+   - Each emission usually has a HTML comment marker nearby (`<!-- Rank Math -->`, `<!-- Code Snippets -->`)
+3. Keep Layer 1 (SEO plugin) → it's the source of truth
+4. Remove Layer 2 duplicates → surgical edit via Code Snippets REST
+5. Remove Layer 3 duplicates → identify the theme/plugin function emitting it, suppress via remove_action() OR mu-plugin pattern (see references/mu-plugin-patterns.md)
+6. Re-render + re-grep → counts should be 1
+```
+
+### Don't try to fix via `add_filter()` add-only
+
+Tempting to write:
+```php
+add_filter( 'wp_head', function () {
+    // strip duplicates somehow...
+});
+```
+
+It rarely works cleanly — the duplicate emissions happen via different hooks, different priorities. The right fix is to **find each emission source + remove at source**, not to filter the entire output.
+
+### Cost of leaving duplicates
+
+- Facebook picks first/last unpredictably → preview varies by share
+- LinkedIn / Twitter parse multiple times → may show wrong image
+- Lighthouse SEO audit flags duplicate meta (minor signal)
+- Rank Math validation badge shows "warning" instead of "OK"
+
+Worth fixing on every site you audit.
+
 ## OG image attachment integration (Rank Math)
 
 ⚠️ Rank Math **REQUIRES the attachment ID** (not just the URL) to render `og:image` properly.

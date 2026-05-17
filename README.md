@@ -65,7 +65,7 @@ wp-stack/
 ├── SKILL.md                          ← Entry point (Claude reads first)
 ├── README.md                         ← This file
 │
-├── references/                       ← Knowledge base (18 files)
+├── references/                       ← Knowledge base (24 files)
 │   ├── stack.md                      ← Standard stack and versions
 │   ├── design-tokens.md              ← Spacing / typography / shadows
 │   ├── elementor-mcp.md              ← MCP cheatsheet + widget gotchas
@@ -73,25 +73,31 @@ wp-stack/
 │   ├── responsive.md                 ← Breakpoint rules + container budgets
 │   ├── astra-customizer.md           ← Astra theme settings + MCP coverage gaps
 │   ├── astra-mobile-menu.md          ← 3-mode comparison + iOS bfcache fix + 6-layer defense
-│   ├── seo-checklist.md              ← Rank Math + Schema + OG image
+│   ├── seo-checklist.md              ← Rank Math + Schema + OG image + duplicate-meta audit
 │   ├── performance.md                ← Speed optimization + cache invalidation
 │   ├── security.md                   ← Hardening checklist
-│   ├── deployment.md                 ← Deploy workflow generic
+│   ├── deployment.md                 ← Deploy workflow + hosting traps (cPanel / Imunify360 / cPanel error_log)
 │   ├── vietnamese.md                 ← Vietnamese-locale concerns (fonts, slugs, schema)
-│   ├── mcp-architecture.md           ← Multi-plugin MCP endpoint architecture
+│   ├── mcp-architecture.md           ← Multi-plugin MCP endpoint architecture + HTTP vs stdio
 │   ├── wp-abilities.md               ← Direct REST ability call pattern
 │   ├── image-optim-recipes.md        ← Pillow PNG / JPEG re-encode recipes
 │   ├── a11y-debugging.md             ← Lighthouse / axe-core fix recipes
-│   ├── fluent-forms.md               ← Fluent Forms styling + integration
-│   └── pitfalls.md                   ← 40+ pitfalls with detection + fix
+│   ├── fluent-forms.md               ← Fluent Forms styling + admin-ajax.php submission test
+│   ├── rankmath.md                   ← Rank Math SEO automation + Schema Builder 2.x format
+│   ├── schema-jsonld.md              ← JSON-LD / Schema.org patterns + @id linking
+│   ├── native-html-patterns.md       ← Zero-JS A11y-by-default UI (FAQ, modal, map)
+│   ├── code-snippets.md              ← Code Snippets plugin REST API workflow
+│   ├── gbp-setup.md                  ← Google Business Profile content policy + VN category gotchas
+│   ├── mu-plugin-patterns.md         ← Suppress upstream Closure / bridge / polyfill patterns
+│   └── pitfalls.md                   ← 50+ pitfalls with detection + fix
 │
-├── workflows/                        ← Step-by-step procedures (17 files)
+├── workflows/                        ← Step-by-step procedures (21 files)
 │   ├── new-site-setup.md             ← Set up a new site A → Z
 │   ├── add-cpt.md                    ← Create a Custom Post Type
 │   ├── theme-builder-loop.md         ← Build a Loop template
 │   ├── migrate-staging-prod.md       ← Migrate staging → production
 │   ├── clone-transform-pattern.md    ← Bulk-build N similar pages via PHP transform
-│   ├── og-image-generation.md        ← 4-tier OG image coverage strategy
+│   ├── og-image-generation.md        ← 4-tier OG image strategy + Flux 2 Pro img-to-img
 │   ├── seo-audit.md                  ← 3-tier SEO audit + focus-keyword tag automation
 │   ├── smtp-relay-setup.md           ← Brevo SMTP relay for budget VPS
 │   ├── multilingual-polylang.md      ← Polylang Free bilingual site
@@ -102,7 +108,11 @@ wp-stack/
 │   ├── design-system-rollout.md      ← Astra + Elementor 3-layer brand rollout
 │   ├── comprehensive-audit.md        ← 8-dimension site audit (no Lighthouse needed)
 │   ├── multi-factor-bug-debug.md     ← "Bug only on one site" cocktail debug methodology
-│   └── build-mcp-wrapper-plugin.md   ← Wrap a plugin's REST routes into MCP abilities
+│   ├── build-mcp-wrapper-plugin.md   ← Wrap a plugin's REST routes into MCP abilities
+│   ├── claude-mcp-connector-setup.md ← `claude mcp add` CLI + HTTP vs stdio decision matrix
+│   ├── litespeed-cache-mgmt.md       ← LiteSpeed cache mgmt for REST + MCP automation
+│   ├── bulk-content-automation.md    ← Idempotent bulk content modification + master dataset
+│   └── session-distillation.md       ← Meta workflow for self-upgrading the skill
 │
 └── templates/                        ← Reusable assets
     ├── project-claude-md-template.md  ← Template for project CLAUDE.md

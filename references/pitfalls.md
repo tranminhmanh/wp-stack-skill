@@ -1706,3 +1706,270 @@ Khi import brand-css designed cho specific theme variant (dark / light / brand-c
 - Brand-css assuming theme variant = source of "invisible content" bugs
 - Defensive CSS using `:not()` is robust + maintenance-free
 - Better than per-page `.dark` class injection (which requires Elementor section editing)
+
+## CRITICAL: WooCommerce 9.x Coming Soon Mode silently hides shop + product content from SEO
+
+**Symptom**: H1 on `/shop/` and `/product/*` pages renders the same VN placeholder text on every page, regardless of actual product content. Text appears to come from theme template or a Gutenberg block — easy to misdiagnose:
+
+```html
+<h1 class="wp-block-heading has-text-align-center has-cardo-font-family">
+  Những điều tuyệt vời đang ở phía trước
+</h1>
+<p>Có điều gì đó lớn lao đang được ấp ủ! Cửa hàng của chúng tôi đang được xây dựng...</p>
+```
+
+Frontend Google Search Console indexes this placeholder instead of the actual product → SEO damage potentially measured in weeks of lost ranking.
+
+### Root cause
+
+WooCommerce 9.x onboarding wizard **defaults to "Coming Soon" mode** during initial setup. The flag lives in two `wp_options`:
+- `woocommerce_coming_soon = 'yes'` — overlay enabled
+- `woocommerce_store_pages_only = 'yes'` — applies only to store pages (shop / cart / checkout / account / product), homepage unaffected
+
+If the site owner skips the onboarding wizard OR clicks "Set up later", these defaults silently activate. The site can run production for weeks with Coming Soon active and nobody notices because the homepage looks fine.
+
+### Detection — 1-line grep
+
+```bash
+# Check the placeholder text
+curl -s "$SITE/shop/" | grep -c "Những điều tuyệt vời"
+# > 0 = Coming Soon active
+
+# Or check the option directly via REST (if MCP wrapper available)
+curl -u "$U:$APP_PW" "$SITE/wp-json/wp/v2/settings" | jq '.woocommerce_coming_soon'
+# Or wp-admin → WooCommerce → Settings → Site visibility
+
+# Or check the CSS class signature (block rendering)
+curl -s "$SITE/shop/" | grep -oE 'wp-block-heading[^"]*has-cardo-font-family' | head -1
+```
+
+### Easy misdiagnosis traps
+
+- Looks like Astra theme placeholder → check theme files, find nothing
+- Looks like Gutenberg block content → check page content via REST `/wp/v2/pages/<shop_id>` → content is EMPTY → confused
+- Looks like a theme template override → grep theme files for the text → no match
+- Looks like a Theme Builder template → check Elementor Theme Builder → no template covering `/shop/`
+
+All four trails go cold because the source is `wp_options`, not page content / theme / block / template.
+
+### Fix — 2-line option update + cache purge
+
+```php
+update_option('woocommerce_coming_soon',       'no');
+update_option('woocommerce_store_pages_only',  'no');
+do_action('litespeed_purge_all');  // CRITICAL — LSCache had cached the Coming Soon HTML
+```
+
+After this, the next `/shop/` request renders actual products. Verify:
+
+```bash
+curl -s "$SITE/shop/?cb=$(date +%s)" | grep -c "Những điều tuyệt vời"
+# Expect: 0
+```
+
+### Prevention checklist for new WC sites
+
+Add to [`workflows/new-site-setup.md`](../workflows/new-site-setup.md):
+
+```
+[ ] After installing WooCommerce, verify site visibility = "Live"
+    wp-admin → WooCommerce → Settings → Site visibility
+    OR: wp option get woocommerce_coming_soon (expect 'no')
+    OR: curl test grep on /shop/ for the Vietnamese placeholder
+```
+
+### Why this matters most
+
+Google indexes the Coming Soon HTML if the site is publicly accessible. Cache cleanup is HARDER once Google has crawled it:
+- `URL inspection` → `Request indexing` per URL — slow
+- Google's own cache may serve the Coming Soon snippet in SERPs for weeks
+- Bing / DuckDuckGo / other engines have their own re-crawl schedules
+
+Catching this BEFORE the first public crawl saves significant SEO recovery work.
+
+## CRITICAL: LiteSpeed `object-cache.php` drop-in version mismatch fatal — blocks ALL plugin activate hooks
+
+**Symptom**: trying to activate ANY plugin (not just LiteSpeed-related ones) on a site → PHP fatal at:
+
+```
+Uncaught Error: Call to undefined function litespeed_oc_disable_ext_cache()
+  in wp-content/plugins/litespeed-cache/.../object-cache.cls.php:586
+```
+
+Plugin activation page shows a white screen or fatal. EVERY plugin activation / deactivation hook fails. Common misdiagnosis: site owner thinks the specific plugin being activated is buggy. The plugin is innocent — the LSC drop-in is the cause.
+
+### Root cause
+
+LiteSpeed Cache uses an Object Cache drop-in at `wp-content/object-cache.php` (placed there by the plugin during enable). This drop-in file declares `litespeed_oc_disable_ext_cache()`. When the LiteSpeed plugin updates to a new version but the drop-in is STALE (version mismatch):
+
+- Drop-in version N: declares the function with one signature
+- Plugin version N+1: calls the function with a different signature OR expects it to exist in a different location
+
+→ `object-cache.cls.php` at line ~586 calls the function → undefined → fatal during plugin lifecycle hooks (`activate_plugin`, `deactivate_plugins`).
+
+### Detection
+
+```bash
+# Check drop-in file mtime vs plugin folder mtime
+ls -la wp-content/object-cache.php
+ls -la wp-content/plugins/litespeed-cache/
+
+# If drop-in is much OLDER than plugin → version mismatch likely
+
+# Or: check the drop-in's stated version
+head -20 wp-content/object-cache.php | grep -i "version"
+```
+
+### Fix — 3 steps
+
+```bash
+# 1. Delete the stale drop-in
+rm wp-content/object-cache.php
+
+# 2. In wp-admin, navigate to LiteSpeed Cache → Cache → [6] Object → DISABLE the feature
+
+# 3. Re-ENABLE Object Cache → LiteSpeed recreates the drop-in with the matching version
+```
+
+After step 3: `object-cache.php` exists again, declares the function correctly, plugin activation hooks work.
+
+### Why this is high-severity
+
+- Blocks ALL plugin activation, not just LiteSpeed-related
+- Site looks completely broken — admins can't enable / disable anything
+- 30+ minutes typical misdiagnosis time as user tries to debug "the wrong plugin"
+- No clear error in WordPress UI — only visible in PHP error log
+
+### Prevention
+
+When updating LiteSpeed Cache plugin:
+- Check `wp-content/object-cache.php` version after the update
+- If mismatch: disable + re-enable Object Cache feature immediately
+- Don't activate other plugins until drop-in is in sync
+
+### Family of "shared resource mismatch" pitfalls
+
+Related issues with similar shape (component A out of sync with component B → silent fatal):
+- Plugin update without WP core update → minimum-version PHP fatal
+- mu-plugin polyfill outdated vs WP core function signature change
+- npm package version drift in `node_modules` vs `package-lock.json`
+
+Detection pattern: look for `Call to undefined function` errors that don't match any plugin's actual API.
+
+## XML comment regex trap when injecting / replacing SVG sprite content
+
+**Symptom**: script reports successful replace of an SVG sprite XML comment block:
+
+```
+inject-icons-vX.py: Sprite replaced v1.0 → v1.1 (regex matched)
+```
+
+Frontend verify:
+```
+Sprite symbols: 67 (expected 43)
+24 duplicates
+```
+
+The replacement reports success, but actually performed a PARTIAL replace — the sprite now contains the OLD content + the NEW content concatenated, with 24 duplicate `<symbol>` entries.
+
+### Root cause
+
+Common pattern: use regex `<!--\s*START_SPRITE\s*-->.*?<!--\s*END_SPRITE\s*-->` (non-greedy `.*?`) to identify the SVG sprite block and swap it. Works if there's exactly ONE such block.
+
+But: when a page has DUPLICATED sprite blocks (a build pipeline injected the sprite twice, or a different snippet duplicated it), the regex matches only the FIRST occurrence. The second occurrence is NOT matched → both old and new versions render after replacement.
+
+### Why `.*?` non-greedy doesn't catch this
+
+Non-greedy ensures the regex matches the SMALLEST `<!--START-->...<!--END-->` span. It doesn't enforce uniqueness. If two `<!--START-->...<!--END-->` spans exist independently, the regex matches the first one. The second is untouched.
+
+### Detection
+
+```python
+import re
+content = open('rendered.html').read()
+# Count symbol elements (real check)
+symbols = re.findall(r'<symbol\s+id="([^"]+)"', content)
+print(f'Total: {len(symbols)}, Unique: {len(set(symbols))}, Duplicates: {len(symbols) - len(set(symbols))}')
+```
+
+If `Duplicates > 0` → you have a regex partial-replace bug somewhere in the injection pipeline.
+
+### Fix — find AND replace all occurrences
+
+```python
+import re
+
+# Replace ALL occurrences, not just first
+new_content = re.sub(
+    r'<!--\s*START_SPRITE\s*-->.*?<!--\s*END_SPRITE\s*-->',
+    new_sprite_block,
+    content,
+    flags=re.DOTALL,
+    count=0,  # ← explicit: 0 means replace all (default already 0 but make it explicit for clarity)
+)
+```
+
+Or even better: detect duplicates BEFORE replacing:
+
+```python
+matches = re.findall(r'<!--\s*START_SPRITE\s*-->.*?<!--\s*END_SPRITE\s*-->',
+                    content, flags=re.DOTALL)
+if len(matches) > 1:
+    print(f'⚠️  Found {len(matches)} sprite blocks — should be 1')
+    # Decide: remove duplicates THEN re-inject, vs replace-all
+```
+
+### Anti-pattern
+
+❌ **Test injection ONLY by checking script output** ("Sprite replaced — exit 0!") — script success doesn't mean correct result. Always verify the rendered output, not the script log.
+
+❌ **Trust `.*?` to be "safe"** — non-greedy is about match-length, not about uniqueness or count. They're orthogonal.
+
+### Generalization
+
+Anytime you're regex-replacing content delimited by markers (XML comments, code fences, JSDoc blocks, custom delimiters), THINK about whether the document can legitimately have multiple delimited blocks. If yes → use `count=0` explicitly OR pre-detect duplicates.
+
+**Reusability**: universal for HTML / XML / Markdown injection pipelines using regex-delimited replace.
+
+## WP shared hosting blocks SVG upload — use CSS `mask-image` data URI workaround
+
+**Symptom**: uploading SVG to WP Media Library:
+
+```
+HTTP 500 rest_upload_unknown_error:
+"Sorry, you are not allowed to upload this file type"
+```
+
+Despite SVG being a valid web format, most shared WordPress hosts (AZDIGI, similar) + Imunify360 WAF block `image/svg+xml` MIME by default. The concern: SVG can carry `<script>` payloads → XSS vector.
+
+### Why this matters
+
+You can't store branded mono-color icons as standalone SVG attachments. You also can't use SVG as a `featured_media` for OG image (Rank Math skips SVG anyway — see [`rankmath.md`](rankmath.md) "OG image resolution chain"). And inline SVG inside `text-editor` widgets gets `wp_kses_post`-filtered.
+
+### Workaround — CSS `mask-image` with data URI inline in widget styles
+
+Apply per-widget via Elementor's "Custom CSS" tab (or kit `custom_css`). The SVG becomes a CSS data URI, used as a `mask-image` over a CSS-controlled `background-color`. Browser uses the SVG to MASK the color → mono-color icon with hover-able color transitions.
+
+Full recipe: [`references/elementor-mcp.md`](elementor-mcp.md) "SVG upload blocked by host WAF — CSS mask-image data URI workaround".
+
+### When this is the ONLY option
+
+- Shared host WAF blocks SVG (most VN hosts: AZDIGI, Vietnix, iNet)
+- You don't have host-level access to whitelist the SVG MIME
+- You need site-wide icon library without per-file uploads
+
+### When you can avoid this workaround
+
+- VPS / dedicated host you control (whitelist SVG via `add_filter('wp_check_filetype_and_ext', ...)`)
+- Cloudflare R2 / S3 + media offload (host SVGs on a service that allows them)
+- Plugin like "Safe SVG" that sanitizes SVG content before upload (may or may not satisfy WAF)
+
+### Anti-patterns
+
+❌ Try to bypass the WAF by renaming SVG to `.txt` and renaming server-side → host-level scan still catches it
+❌ Inline SVG inside `text-editor` widget — gets `wp_kses_post`-filtered, stripped silently
+❌ Inline SVG as inline `<img src="data:image/svg+xml,...">` — works but loses CSS color control + each instance is full SVG payload (no caching)
+
+The `mask-image` data URI pattern is the only ergonomic + cacheable + color-themeable option on a SVG-blocked host.
+
+**Reusability**: any WordPress shared hosting with WAF SVG block.

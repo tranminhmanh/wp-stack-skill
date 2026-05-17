@@ -150,6 +150,87 @@ Compare cả 2 sources để get full picture:
 
 Em script `audit/cache_abilities.ps1` (xem [`workflows/litespeed-cache-mgmt.md`](../workflows/litespeed-cache-mgmt.md) cross-link OR `references/wp-abilities.md` cross-link) implements 2-pass fetch.
 
+## stdio bridge vs HTTP MCP — architectural distinction
+
+Beyond the "1 plugin = 1 endpoint = 1 connector" rule above, there's a separate architectural choice: HOW does the connector talk to the plugin? Two patterns coexist in the ecosystem:
+
+### Pattern 1 — stdio bridge (npm package — local Node.js process)
+
+```
+Claude Code session
+     │
+     ▼  stdio (line-delimited JSON-RPC)
+  Node.js process (e.g. mcp-wp-abilities)
+     │
+     ▼  HTTPS + Basic auth
+  /wp-json/wp-abilities/v1/abilities (registry — fetches at startup)
+  /wp-json/wp-abilities/v1/abilities/<name>/run (executes per call)
+```
+
+The Node.js process bridges stdio → HTTP. It fetches the WP abilities REST list once at startup, exposes EACH ability as its own MCP tool to Claude (so a site with 210 abilities → 210 MCP tools registered).
+
+### Pattern 2 — HTTP MCP (plugin self-hosts MCP server)
+
+```
+Claude Code session
+     │
+     ▼  HTTPS + MCP protocol + Basic auth
+  /wp-json/mcp/<plugin>-server (real MCP server inside WordPress)
+     │
+     ▼  in-process
+  ability callback (registered via wp_register_ability)
+```
+
+The MCP adapter plugin (e.g. `mcp-adapter`) self-hosts a real MCP server at `/wp-json/mcp/<plugin>-server`. Claude Code's connector talks the MCP protocol DIRECTLY over HTTPS to that endpoint. No Node.js intermediary.
+
+The connector exposes only **3 META tools** per server (`discover-abilities`, `get-ability-info`, `execute-ability`) regardless of how many abilities are registered. Running a specific ability is a call to `execute-ability(name: "...", parameters: {...})`.
+
+### Why the distinction matters for context tokens
+
+| Site count | stdio context cost | HTTP context cost |
+|---|---|---|
+| 1 site, 200 abilities | 200 tool schemas in tool registry | 3 tool schemas (regardless of ability count) |
+| 10 sites, 200 abilities each | 2,000 tool schemas | 30 tool schemas |
+| 50 sites | 10,000 tool schemas (impractical) | 150 tool schemas (fine) |
+
+stdio gives autocomplete ergonomics but consumes context proportional to ability count. HTTP gives constant-context but requires `discover` step to learn the abilities.
+
+For long-term standard: **HTTP scales, stdio doesn't**.
+
+### Why this is independent of the "1 plugin = 1 endpoint" rule
+
+Both patterns honor 1-plugin-1-endpoint:
+- stdio bridge: each plugin's abilities REST surface fetched separately → separate stdio process per plugin (or per site).
+- HTTP MCP: each plugin self-hosts its own `/mcp/<plugin>-server` endpoint → separate connector per plugin.
+
+The choice between stdio/HTTP is orthogonal to which endpoint a connector targets.
+
+### When stdio is the right choice
+
+- Heavy build phase (rebuilding many pages) where autocomplete saves real time
+- Single site, no plan to scale to multi-site
+- Already-deployed stdio investment + working mu-plugin
+- Want tool-name-driven discovery in chat without explicit `discover_abilities` step
+
+### When HTTP is the right choice (default going forward)
+
+- Multi-site automation (3+ sites)
+- Fresh site setup with no prior MCP investment
+- Want auto-detect of new abilities when plugin updates
+- Maintenance mode (autocomplete value < context-cost trade-off)
+
+### Migrating from stdio → HTTP
+
+When a site shifts from build → maintenance, migration is straightforward:
+
+1. Install `mcp-adapter` plugin on the WP site (if not already present)
+2. `claude mcp add -t http -s user <site>-elementor https://<site>/wp-json/mcp/elementor-mcp-server -H "Authorization: Basic <b64>"`
+3. Restart Claude Code session
+4. Optionally remove the stdio connector + uninstall the npm bridge
+5. (Optional) Auto-dump `.ability-catalog.md` to project root for discoverability (see [`workflows/claude-mcp-connector-setup.md`](../workflows/claude-mcp-connector-setup.md) "Compensate for HTTP's lost autocomplete")
+
+The transition is non-destructive — both can coexist while you verify.
+
 ## Liên quan
 
 - [`wp-abilities.md`](wp-abilities.md) — gọi ability trực tiếp qua REST (bypass MCP bridge)

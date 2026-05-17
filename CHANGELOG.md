@@ -5,6 +5,62 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0] — 2026-05-17
+
+Round 10 weekly distillation. ~2,400 lines of new insights this week across 4 production sites. 14 patterns promoted into 11 file updates + 3 new reference files. Brand-leak scan + commit-message scan run pre-push per the established governance.
+
+### Added — 3 new reference files
+
+- **`references/code-snippets.md`** — Code Snippets plugin REST API workflow. `GET/POST /wp-json/code-snippets/v1/snippets` endpoints, `code_error: null` validation, control-char JSON parse gotcha, surgical-edit workflow (list → fetch → edit → POST update → cache purge). Battle-tested cleanup pattern for duplicate `og:image` emissions across legacy snippet sites.
+- **`references/gbp-setup.md`** — Google Business Profile content-policy reference. 5 description rules (no phone / pricing / promo / URL / HTML — auto-reject triggers), compliant Vietnamese template for B2B businesses, category Vietnamese-autocomplete gotcha (type English to disambiguate B2B vs B2C intent), re-submit timeline + escalation path.
+- **`references/mu-plugin-patterns.md`** — MU-plugin patterns for surviving upstream-plugin misbehavior. Suppress anonymous Closure via `ReflectionFunction::getFileName()` + `$wp_filter` unset (since `remove_action()` can't reference Closures), conditional override, bridge between two plugins, polyfill, force-option override. File-organization conventions.
+
+### Changed
+
+- **`references/rankmath.md`** — major update (6 insights bundled):
+  - Schema Builder 2.x `rank_math_schema_{Type}` meta format unlocks rich snippets WITHOUT Schema Pro plugin. Verified types: Service, LocalBusiness, Article, Festival, BusinessEvent, SocialEvent, Product.
+  - FAQPage NOT supported via the schema-meta path — inline JSON-LD via HTML widget is the workaround.
+  - WC Shop page title precedence — per-page meta wins over template; `pt_product_archive_title` is NOT in the title chain.
+  - OG image resolution chain: `rank_math_facebook_image` (raster only) → `featured_media` → site default; SVG silently skipped.
+  - WooCommerce product OG image via `/wc/v3/products` `images[]` array (REPLACE semantic — fetch + append + PUT for additive).
+  - Wrapper-plugin response/input key conventions: semantic keys (`posts[]`, `redirections[]`, `links[]`, `rows[]`, `destination`) instead of generic ones.
+- **`references/deployment.md`** — 4 hosting traps added:
+  - cPanel `save_file_content` UPDATEs only, doesn't CREATE — use `upload_files` (multipart) for new files; combo "probe + restore stub" pattern avoids creating new files entirely.
+  - Imunify360 quarantines Vietnamese strings in PHP body — base64-encode in GET param, decode in PHP (source stays 100% ASCII).
+  - PHP `error_log` location on CloudLinux LVE / cPanel = vhost root (`/home/<user>/<domain>/error_log`), NOT `wp-content/debug.log`. Detection probe + matrix across 7+ shared hosts.
+  - Server-side substring filter for huge `error_log` triage (29MB+ logs → `tail -100` is 100% spam noise; filter by `Fatal` / time-window via ability).
+- **`references/wp-abilities.md`** — 3 REST gotchas added:
+  - WP REST trash post requires `DELETE /posts/{id}` (POST `status: trash` is rejected because the `status` enum excludes `trash`).
+  - REST `content.rendered` pagination URLs use REST endpoint URI (`/wp-json/wp/v2/pages/123/page/2/`) NOT canonical (`/about/page/2/`). For audit, fetch via frontend GET with browser User-Agent.
+  - App Password auth REST → 200 (works), wp-admin → 302 (redirect to login, NOT fatal). Distinguish: real fatal = 500. Healthy-site post-fix verification checklist included.
+- **`references/elementor-mcp.md`** — 3 widget gotchas added:
+  - Heading widget strips SVG / HTML from `title` field via `wp_kses_post`. 3 workarounds documented; separate-HTML-widget-BEFORE-heading is the recommended path.
+  - SVG upload blocked by host WAF (AZDIGI etc.) → CSS `mask-image` data URI workaround for native icon-box widgets. URL-encoding pattern + mono-color trade-offs.
+  - Site-wide conversion tracking via Custom Code Snippet — multi-platform fire pattern (GA4 + Meta + TikTok, each `try/catch`-wrapped), event delegation with `closest()` + capture phase for late-bound elements.
+- **`references/pitfalls.md`** — 4 critical pitfalls added:
+  - **CRITICAL** WooCommerce 9.x Coming Soon Mode silent SEO killer — shop + product show placeholder VN text regardless of content; Google indexes the placeholder; 30+ min typical misdiagnosis time.
+  - **CRITICAL** LiteSpeed `object-cache.php` drop-in version mismatch — blocks ALL plugin activate hooks with `litespeed_oc_disable_ext_cache()` undefined fatal; misdiagnosed as "the plugin being activated has a bug" when the LSC drop-in is the actual cause.
+  - XML comment regex trap when injecting SVG sprite — non-greedy `.*?` doesn't enforce uniqueness; explicit `count=0` for replace-all in `re.sub()`.
+  - WP shared hosting SVG-upload block → CSS `mask-image` data URI workaround (cross-ref to `elementor-mcp.md` full recipe).
+- **`references/seo-checklist.md`** — added "Duplicate `og:image` / meta tag detection — 3-layer audit": SEO plugin (layer 1, source of truth) / Code Snippets legacy hardcoded (layer 2) / theme hooks + `wp_site_icon()` (layer 3). Triage workflow + grep commands.
+- **`references/mcp-architecture.md`** — added "stdio bridge vs HTTP MCP" architectural distinction. Comparison at scale (10+ sites): context-token cost (210 tools per site vs 3 META tools), maintenance burden, failure surface. When-to-use decision matrix for each. Migration path stdio → HTTP.
+- **`workflows/claude-mcp-connector-setup.md`** — 3 sections added:
+  - HTTP MCP vs stdio bridge decision matrix (long-term standard: HTTP for new sites). Compensate for HTTP's lost autocomplete with auto-dumped `.ability-catalog.md`.
+  - Windows manual `~/.claude.json` edit when no `claude` CLI on PATH. 3 scope locations (user / project-local / project-checked-in) with belt-and-suspenders option.
+  - HTTP MCP transport `initialize` handshake required (POST `tools/list` direct = 400). 2-step flow + required headers (Mcp-Session-Id, MCP-Protocol-Version, Accept: application/json,text/event-stream).
+- **`workflows/comprehensive-audit.md`** — added "Diagnostic step — PHP-runtime ability count vs REST-list count". Compare `wp_get_abilities()` returns vs `/wp-abilities/v1/abilities` list to distinguish "filter problem" (pagination, show_in_rest, REST permission) from "registration problem" (plugin inactive, fatal in data files, hook not firing).
+- **`references/fluent-forms.md`** — added "Submission test via `admin-ajax.php`" — anonymous frontend simulation, double-encoded inner `data=` param, dropdown EXACT-match validation, 423 validation-error format, anti-patterns.
+- **`workflows/bulk-content-automation.md`** — added "Master dataset pattern" — Python module as single source of truth (slug + facts + SEO + schema centralized), import-and-iterate, version-controlled diff. Real result: 25 portfolio × 14 fields = 350 data points centralized; Python dict scales to ~200 items, then move to SQLite.
+- **`workflows/og-image-generation.md`** — added Flux 2 Pro img-to-img recipe ($0.06/image, reference image preserves brand color/lighting, 1344×752 output, prompt tips, upload + featured_media set workflow).
+- **`SKILL.md`** — 3 new task routes added to the load-which-file matrix.
+- **`README.md`** — 24 references + 21 workflows (was 18 + 17). Refreshed inventory tree.
+
+### Sources — patterns extracted from
+
+4 production sites this week: bulk SEO automation + Rank Math wrapper plugin iterations + JSON-LD schema rollout across many post types + Schema Builder 2.x format discovery + LSC object-cache drop-in fatal + WooCommerce Coming Soon SEO trap + CloudLinux LVE error_log location + HTTP MCP vs stdio architectural decision + Windows ~/.claude.json manual edit + MU-plugin Closure suppression + SVG WAF workaround + Vietnamese in PHP base64 GET workaround + Code Snippets REST API + GBP description content policy.
+
+[0.8.0]: https://github.com/tranminhmanh/wp-stack-skill/releases/tag/v0.8.0
+
 ## [0.7.2] — 2026-05-13 (CI fix + brand-leak scrub)
 
 ### Fixed
@@ -19,7 +75,7 @@ The v0.7.x content shipped with project-specific identifiers (client acronyms, i
 
 - Insight ID prefixes like `<acronym>-2026-05-XX-NNN` rewritten to `weekly distillation 2026-05-XX #NNN` (no project-name reveal)
 - Project-name-revealing phrasing rewritten with neutral placeholders (`the audited site`, `inherited B2B site`, `project A` / `project B`)
-- Brand-prefix CSS marker examples (`.cha-`, `.pkm-`, `pkm-pillar-...`) rewritten to `.<project-slug>-` / `acme-pillar-...`
+- Brand-prefix CSS marker examples rewritten to generic `.<project-slug>-` syntax (the literal scrubbed strings are not quoted here to avoid re-leaking via the changelog itself)
 - GitHub release notes for v0.7.0 + v0.7.1 also edited via `gh release edit` for consistency
 
 ### Files touched

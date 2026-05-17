@@ -241,6 +241,76 @@ After running, derive an issue list from the JSON. Typical priorities:
 | 🟡 Medium | TTFB > 1.5s; page weight > 300KB; > 1 H1 per page; multiple FAQPage schema instances |
 | 🟢 Low | Missing skip-link; landmarks missing on some pages; `alt=""` on >5% images (legitimate decorative may be OK) |
 
+## Diagnostic step — PHP-runtime ability count vs REST-list count
+
+When auditing "missing abilities" or a "tool count gap" on an MCP-bridged site, always compare TWO sources:
+
+1. **PHP-runtime count** — what `wp_get_abilities()` returns when called from a wp-load.php context (the actual registry).
+2. **REST-list count** — what `GET /wp-json/wp-abilities/v1/abilities` returns to an external client.
+
+The gap between these two tells you WHERE the problem is:
+
+| Pattern | Means | Fix path |
+|---|---|---|
+| Runtime = REST = expected count | Both sources match expectation → nothing missing | (no action) |
+| Runtime > REST (e.g. 194 vs 100) | **Display filter problem** — pagination cap, `show_in_rest` meta missing, REST permission filter | Adjust `per_page` query, flip `meta.show_in_rest:true`, check REST capability filter |
+| Runtime < expected | **Registration problem** — plugin inactive, fatal error in plugin's data file, hook not firing | Reactivate plugin, check error log, verify the canonical `wp_abilities_api_init` hook fires |
+
+### Probe runtime count via WP-context PHP
+
+```bash
+# Drop a probe.php in webroot, hit via curl, then stub it out
+cat > /tmp/probe.php <<'PHP'
+<?php
+require_once __DIR__ . '/wp-load.php';
+if (!function_exists('wp_get_abilities')) {
+    echo "wp_abilities_api not loaded\n"; exit;
+}
+$abilities = wp_get_abilities();
+$by_ns = [];
+foreach ($abilities as $name => $a) {
+    $ns = strstr($name, '/', true) ?: '(no-namespace)';
+    $by_ns[$ns] = ($by_ns[$ns] ?? 0) + 1;
+}
+ksort($by_ns);
+foreach ($by_ns as $ns => $count) {
+    printf("%-30s %d\n", $ns, $count);
+}
+printf("\nTOTAL: %d abilities registered\n", count($abilities));
+PHP
+
+# Deploy via cPanel Fileman or SCP, then:
+curl -s "https://<site>/probe.php?token=<token>"
+# Output e.g.:
+#   core                   3
+#   elementor-mcp        105
+#   mcp-wp                86
+#   TOTAL: 194 abilities registered
+
+# Compare to REST:
+curl -u "$U:$APP_PW" "https://<site>/wp-json/wp-abilities/v1/abilities?per_page=200" \
+  | jq '. | length'
+# 100 ← capped at default per_page
+
+# Mismatch (194 runtime vs 100 REST) → pagination cap issue
+```
+
+⚠️ Always stub `probe.php` after use (overwrite with `<?php // disabled`) — leaving probes accessible is a security risk.
+
+### Common causes of runtime > REST
+
+1. **Default `per_page=100` cap on the REST list** — see [`mcp-architecture.md`](../references/mcp-architecture.md) "REST registry pagination caveat". Override with `?per_page=200`.
+2. **mu-plugin pagination override** — some mu-plugins (`abilities-show-in-rest.php` variants) wrap the REST controller and cap `per_page` to 100 max. Source-grep for `min(100,` in mu-plugins.
+3. **Missing `meta.show_in_rest: true`** — see [`wp-abilities.md`](../references/wp-abilities.md). The ability registers but is filtered out of the REST list.
+
+### When to suspect tool count gap
+
+- MCP session shows fewer tools than expected after `claude mcp list` shows ✓ Connected
+- A specific namespace (`mcp-wp/*`, `rankmath-mcp/*`) is entirely absent while others are present
+- npm stdio bridge logs show only N abilities while the site dashboard reports N+M
+
+The runtime-vs-REST compare disambiguates "ability not registered" from "ability not visible". Always do this before assuming the plugin needs reinstall.
+
 ## Limitations
 
 1. **No real Core Web Vitals** (LCP / CLS / INP) — requires a real browser. For perf optimization, use [`workflows/lighthouse-driven-optim.md`](lighthouse-driven-optim.md).

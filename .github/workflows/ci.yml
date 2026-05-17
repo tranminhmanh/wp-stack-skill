@@ -33,6 +33,7 @@ jobs:
             --exclude '^https?://site\.com'
             --exclude '^https?://<.*>'
             --exclude '^https?://(www\.)?linkedin\.com'
+            --exclude '^https?://(www\.)?google\.com/maps'
             --exclude '^file://'
             --max-redirects 5
             --max-retries 2
@@ -41,6 +42,7 @@ jobs:
         # Excludes:
         # - example.com / localhost / site.com / <placeholders> — placeholder URLs in docs
         # - linkedin.com — returns HTTP 999 to all bots / link checkers (anti-scrape)
+        # - google.com/maps — embed URL templates contain placeholder coords; not navigable
         # - file:// — relative paths in templates that resolve outside the skill repo
         #   (templates are deployed into user projects; paths like ../../.claude/skills/...
         #   are intentional and resolve at deployment time, not CI time)

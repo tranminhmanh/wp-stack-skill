@@ -150,6 +150,130 @@ document.querySelectorAll('input[data-name="phone"]').forEach(input => {
 
 `pattern` triggers HTML5 native validation. `inputmode="tel"` brings up the phone keyboard on mobile. `autocomplete="tel"` lets browsers autofill from saved profiles.
 
+## Submission test via `admin-ajax.php` — anonymous frontend simulation
+
+When you need to verify a Fluent Form actually submits (vs just renders correctly) — without opening a browser — POST to `admin-ajax.php` directly. Useful for CI smoke tests, post-deploy verification, regression suites.
+
+### Endpoint
+
+```
+POST https://<site>/wp-admin/admin-ajax.php
+Content-Type: application/x-www-form-urlencoded
+Referer: https://<site>/<page-with-form>/
+
+action=fluentform_submit
+&data=<urlencoded inner form data>
+&form_id=<N>
+```
+
+### Inner `data=` is DOUBLE-ENCODED
+
+The `data` parameter is itself URL-encoded form-data. Easiest from Python:
+
+```python
+import urllib.parse
+
+inner = urllib.parse.urlencode({
+    "names[first_name]": "Test",
+    "names[last_name]":  "Lead",
+    "email":             "test@example.com",
+    "input_text":        "+84 762 279 292",       # phone
+    "dropdown":          "Concert / Liveshow",     # MUST be exact-match against form schema
+    "datetime":          "2026-05-20",
+})
+
+# Outer wrapper
+post_body = urllib.parse.urlencode({
+    "action":  "fluentform_submit",
+    "data":    inner,                              # inner already URL-encoded
+    "form_id": "3",
+})
+
+# Send
+import urllib.request
+req = urllib.request.Request(
+    f"{SITE}/wp-admin/admin-ajax.php",
+    data=post_body.encode("utf-8"),
+    headers={
+        "Content-Type": "application/x-www-form-urlencoded",
+        "Referer": f"{SITE}/<page-with-form>/",
+    },
+)
+resp = urllib.request.urlopen(req)
+print(resp.read().decode())
+```
+
+### Success response
+
+```json
+{
+  "success": true,
+  "data": {
+    "insert_id": 1,
+    "result": {"message": "Cảm ơn bạn đã nhắn tin...", "action": "hide_form"},
+    "error": ""
+  }
+}
+```
+
+Submission saved to DB, visible at `GET /wp-json/fluentform/v1/submissions?form_id=3` (App Password auth required).
+
+### Validation error response
+
+```json
+HTTP 423 {
+  "errors": {
+    "input_text": {"required": "Trường này là bắt buộc"},
+    "dropdown":   ["Dữ liệu được cung cấp không hợp lệ"]
+  }
+}
+```
+
+HTTP 423 means schema validation failed — the request reached Fluent Forms but didn't pass field rules.
+
+### Dropdown / select fields are EXACT-MATCH
+
+For `dropdown`, `radio`, `checkbox` fields, the submitted value must exactly match one of the configured options — including case, spaces, and Vietnamese diacritics:
+
+```
+✅ "Concert / Liveshow"
+❌ "concert/liveshow"       (case + space differ)
+❌ "Concert/Liveshow"       (missing space around `/`)
+❌ "Concert/Liveshow "       (trailing space)
+```
+
+**Pre-fetch valid options** from the form schema before testing:
+
+```bash
+curl -u "$U:$APP_PW" \
+  "$SITE/wp-json/fluentform/v1/forms/3" \
+  | jq -r '.form_fields[] | select(.attributes.name=="dropdown") | .settings.advanced_options[].value'
+```
+
+### When to use this vs browser testing
+
+| Use case | Tool |
+|---|---|
+| Post-deploy smoke test | `admin-ajax.php` POST (fast, scriptable) |
+| Regression in CI | `admin-ajax.php` POST |
+| Cross-browser layout / JS issue | Real browser |
+| Final user-acceptance test before launch | Real browser |
+| Anti-bot / honeypot debug | Real browser (POSTs don't trigger client-side captcha) |
+
+### Anti-patterns
+
+❌ **Skip the `Referer` header** — Fluent Forms may reject submissions without it (treats as direct API hit)
+
+❌ **Use `data` parameter as a JSON object** — Fluent Forms expects URL-encoded form data inside, NOT JSON
+
+❌ **Send the request to `/wp-json/fluentform/v1/submit`** — that endpoint exists but is admin-only (requires App Password) and has different validation. `admin-ajax.php` is the anonymous-user endpoint Fluent Forms actually uses for frontend.
+
+❌ **Forget to clean up test submissions** — your test data sits in the production DB. Delete via:
+```bash
+curl -u "$U:$APP_PW" -X DELETE \
+  "$SITE/wp-json/fluentform/v1/submissions/<insert_id>"
+```
+
 ## Cross-references
 
 - [`references/pitfalls.md`](pitfalls.md) "Fluent Forms shortcode renders empty if the form has 0 fields"
