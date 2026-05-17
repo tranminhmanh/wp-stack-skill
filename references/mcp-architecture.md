@@ -27,9 +27,9 @@ Tuy nhiên endpoint này chỉ là **registry**, KHÔNG phải MCP transport. MC
 
 ## Hệ quả thiết kế
 
-### 1 connector = 1 endpoint
+### 1 connector = 1 endpoint (DEFAULT pattern)
 
-Nếu site có **N plugin MCP**, cần **N connector** từ phía Claude:
+Nếu site có **N plugin MCP độc lập**, cần **N connector** từ phía Claude:
 
 ```
 acme-global    → /mcp/mcp-adapter-default-server   (2 core tools)
@@ -37,7 +37,51 @@ acme-elementor → /mcp/elementor-mcp-server         (~110 elementor tools)
 acme-<other>   → /mcp/<other-server>               (...)
 ```
 
-❌ **Anti-pattern**: chỉ tạo 1 connector global "all-in-one" → mất N-1 bộ tool.
+❌ **Anti-pattern (cho default pattern)**: chỉ tạo 1 connector global "all-in-one" mong expect thấy hết tool → mất N-1 bộ tool vì mỗi plugin register endpoint riêng.
+
+### Merged single-endpoint (ALTERNATIVE pattern — valid)
+
+Khi default pattern gây pain (stdio bridge disconnect frequent, connector slot scarce, debugging multi-endpoint phức tạp), có thể chủ động merge tất cả abilities vào 1 endpoint bằng cách build MU-plugin/plugin custom:
+
+```php
+// MU-plugin: <site>-merged-mcp-server.php
+add_action( 'mcp_adapter_init', function ( $adapter ) {
+    // Discover ALL public abilities across plugins
+    $all_abilities = [];
+    foreach ( wp_get_abilities() as $ability ) {
+        $meta = $ability->get_meta();
+        if ( ! empty( $meta['mcp']['public'] ) ) {
+            $all_abilities[] = $ability->get_name();
+        }
+    }
+    $adapter->create_server(
+        '<site>-all',                                   // server_id
+        'mcp', '<site>-all',                            // namespace + route
+        '<Site> Merged MCP Server', '...', '1.0',
+        array( \WP\MCP\Transport\HttpTransport::class ),
+        null, null,
+        $all_abilities,
+        array(), array(), null
+    );
+}, 30 );
+```
+
+**Real example**: a B2B wholesale site uses a single endpoint `<site>-all` exposing 212 tools (elementor + mcp-wp + rankmath + core) qua 1 connector. Migration giảm stdio disconnect, save connector slots.
+
+**Trade-off table**:
+
+| Aspect | Default (N endpoints) | Merged (1 endpoint) |
+|---|---|---|
+| Connector slot Claude side | N slot | 1 slot ⭐ |
+| Tool name collision risk | None (namespace separation tự nhiên) | None (vẫn dùng full ability name) |
+| Plugin update isolation | Mỗi endpoint update riêng ⭐ | Cần test tổng vì 1 MU-plugin compile tất cả |
+| stdio bridge disconnect | Mỗi connector phải reconnect riêng | 1 reconnect cover all ⭐ |
+| Tool discovery latency | Parallel discover N endpoint | Sequential 1 endpoint với N abilities |
+| Debug "where is tool" | Phải biết endpoint nào own tool | 1 endpoint duy nhất ⭐ |
+| Plugin compatibility | Hoạt động ngay, không patch | Cần MU-plugin bridge mới expose |
+| Recommended for | New site, normal multi-plugin install | Site đã chịu pain với multi-endpoint, hoặc agent dùng connector limit |
+
+→ Cả 2 pattern đều **valid**, không phải one-vs-other anti-pattern. Project decides based on operational pain.
 
 ### Triệu chứng "tool count gap"
 
