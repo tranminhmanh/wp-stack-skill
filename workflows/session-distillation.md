@@ -322,6 +322,73 @@ git push origin main --force-with-lease
 
 ⚠️ Force-push to main always requires user explicit "yes". Per safety rules, never force push without prior confirmation.
 
+## Periodic skill drift audit — Step 8 every 10-20 promote events
+
+Distillation rounds add insights but rarely **rewrite existing claims**. Sau ~10-20 PROMOTE-TO-SKILL events across multiple projects, skill phát triển 3 dạng drift:
+
+1. **Prescriptive rules conflict với deployed reality** — vd "NOT Astra Pro" trong stack.md trong khi 3+ inherited sites run Astra Pro 4.13.x
+2. **Anti-patterns marked wrongly** — pattern ban từ rule v1 nay được dùng intentionally cho operational reason mới (vd merged single-endpoint MCP)
+3. **Coverage gaps cho stack variations** — non-standard builders (Flatsome, WPBakery, Bricks) chưa documented
+
+Without periodic audit, agent tự tin propose wrong solutions từ stale rules.
+
+### Trigger
+
+Run reflection audit **every 10-20 PROMOTE-TO-SKILL events** — tune frequency theo project velocity. Tracking: count PROMOTED-TO-SKILL markers across project insights.md files since last audit; once ≥10, schedule next.
+
+### Agent prompt template
+
+Paste vào Agent tool (Explore or Plan agent type):
+
+```
+Audit reflection task — cross-project consistency của skill <skill-name> at <skill-path>.
+
+INVESTIGATE 4 questions, looking at ALL recent project insights.md files + the skill files:
+
+1. Coverage gaps — patterns đang dùng trong production projects nhưng skill chưa document?
+   (vd: builder X, plugin Y, deploy path Z khi nào appear ≥2 sites)
+
+2. Cross-project inconsistency — same task làm khác cách ở mỗi project?
+   (vd: project-A dùng path A, project-B dùng path B for same goal — neither in skill)
+
+3. Skill conflicts — rules contradicting deployed reality?
+   (vd: skill says "NEVER X" but ≥2 projects actively use X without issue)
+
+4. Stale content — files >2 weeks chưa touched, possibly outdated?
+   (check git log + cross-reference với current insight content)
+
+For each finding: cite specific files, line numbers, project examples.
+Be BLUNT — không sugar-coat. User wants reality check.
+Output: table với columns | Finding | Severity | Recommended action | Files affected |
+```
+
+### Resolution categories per finding
+
+After audit, classify each finding into one of 4 buckets:
+
+| Category | When | Example action |
+|---|---|---|
+| **Reconcile** | Hard contradiction — rule wrong | Soften absolute rule → conditional rule, add exception case, update prescription |
+| **Add file** | Net new coverage needed | Create new reference (vd `non-standard-stacks.md` cho Flatsome) |
+| **Add workflow** | Multiple valid paths exist, no canonical recipe | Create new workflow with decision tree (vd `deploy-rankmath-mcp-wrapper.md` cho 4 distribution paths) |
+| **Mark stale** | File old but still relevant — needs refresh | Flag file in CHANGELOG todo list for next distillation round |
+
+### Real-world outcome (wp-stack v0.9.0)
+
+Audit ran ~10 days after v0.8.0 distillation. Findings:
+- 3 hard contradictions (Astra Pro anti-pattern, MCP merged endpoint, native widget first)
+- 1 coverage gap (Flatsome + UX Builder) — new file
+- 1 missing canonical recipe (4 deploy paths for rankmath-mcp wrapper) — new workflow
+- 4 stale files flagged for next round
+
+Net: 3 file edits + 2 new files + 0 deletions. Skill stayed prescriptive but acknowledged reality alternatives.
+
+### When NOT to run drift audit
+
+- After every distillation round (overkill — drift takes time to accumulate)
+- Project velocity low (<5 promote events trong 2-3 weeks)
+- Major skill refactor just shipped (audit redundant immediately after)
+
 ## Liên quan
 
 - [`SKILL.md`](../SKILL.md) — separation of concerns (skill = WHAT, project = WHERE/WHO)

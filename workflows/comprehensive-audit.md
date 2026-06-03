@@ -393,3 +393,71 @@ Audit step — verify access path before bulk update:
 curl -u $U:$P "$SITE/wp-json/wp/v2/pages/123?context=edit&_fields=meta" | jq '.meta | keys[]' | grep rank_math
 # If visible → read access OK, but write needs one-shot
 ```
+
+## Multi-surface fact-removal audit — rendered HTML is source of truth
+
+When you need to **remove or update a single fact** (phone number, email, address, business name, hours) site-wide, that fact can live in **up to 7 independent surfaces** — each requires its own surgical removal. Grep on the repo file tree is NOT sufficient because:
+
+- mu-plugin runtime injections aren't in the page content
+- Code Snippets DB rows aren't on disk
+- Schema JSON-LD emitted by SEO plugin filters runs at render time
+- Legacy theme hooks may inject independent of page content
+- Elementor JSON stored in `_elementor_data` post meta isn't grep-able from PHP/HTML files
+- CF7 form fields & message templates are in their own DB rows
+- SEO meta descriptions on individual pages can each carry the fact
+
+**Right approach**: render every page → grep rendered HTML → bucket findings by surface type → fix each bucket separately.
+
+### 7-surface inventory checklist
+
+When auditing a removable fact (e.g. old phone number `+xx-xxx-xxx-xxxx` to be removed):
+
+| # | Surface | Where it lives | How to detect | How to fix |
+|---|---|---|---|---|
+| 1 | **mu-plugin runtime injection** | `wp-content/mu-plugins/*.php` runs JS that builds sticky CTA / contact dock / hotline dd / Zalo overlay at runtime | Fact appears in DOM but NOT in `view-source:` initial HTML (or appears in inline `<script>` block) | Edit mu-plugin source → remove the JS injection logic → re-upload via cPanel Fileman |
+| 2 | **Code Snippets global scope** | `code-snippets` plugin rows with `scope=global`, `active=1`, fact hardcoded into output | View-source contains fact inside `<script>` or `<meta>` block not attributable to a specific Elementor widget | `GET /wp-json/code-snippets/v1/snippets` → grep `code` field → surgical edit + POST update — see [`../references/code-snippets.md`](../references/code-snippets.md) |
+| 3 | **SEO plugin JSON-LD filter enrich** | Rank Math `rank_math/json_ld` filter (or Yoast equivalent) adds fact to schema graph site-wide | Fact appears in `<script type="application/ld+json">` on pages that don't reference it (e.g. /story/ page has telephone) | Find filter source (usually a Code Snippet OR a mu-plugin OR an `Local SEO` plugin field). Cross-check Rank Math Local SEO `phone_numbers` setting (may be null when fact comes from filter not RM). |
+| 4 | **Theme header/footer hooks** | Theme functions.php or Astra hook with hardcoded contact info | Fact appears in `<header>` or `<footer>` markup across all pages | Edit theme via child theme OR Astra hook removal in mu-plugin (see [`../references/mu-plugin-patterns.md`](../references/mu-plugin-patterns.md) §"Suppress upstream Closure") |
+| 5 | **Elementor page widgets** | Specific page's `_elementor_data` has the fact in a heading / button / HTML widget / icon-box | Fact appears only on pages where you put it explicitly | Get via Elementor MCP → edit widget settings → update — see [`../references/elementor-mcp.md`](../references/elementor-mcp.md) |
+| 6 | **CF7 form fields + messages** | Form 29 (or other Contact Form 7 form) has `tel*` field with placeholder, disclaimer text containing fact, OR `messages` array with fact in `mail_sent_ok` / `mail_sent_ng` / `validation_error` | Fact visible in form HTML on contact page, or appears in form submission emails | Edit form via wp-admin Contact → Edit Form → Form tab + Mail tab + Messages tab |
+| 7 | **Rank Math per-page meta** | Individual page's `rank_math_description` or `rank_math_title` carries the fact in marketing copy | Fact appears in `<meta name="description">` on specific pages only | `rankmath-mcp/update-meta` per page id, or RM admin UI |
+
+### Discovery workflow
+
+```bash
+# 1. List all pages from sitemap
+curl -s "$SITE/sitemap_index.xml" | grep -oE '<loc>[^<]+</loc>' | sed 's|</\?loc>||g' > /tmp/all-urls.txt
+
+# 2. Grep rendered HTML for the fact across ALL pages
+FACT='[0-9]{3,4}[ -]?[0-9]{3}[ -]?[0-9]{4}'  # phone-like pattern (adjust per locale)
+while read url; do
+    found=$(curl -s "$url" | grep -cE "$FACT")
+    [ "$found" -gt 0 ] && echo "$url: $found hits"
+done < /tmp/all-urls.txt > /tmp/fact-locations.txt
+
+# 3. For each hit, classify which surface:
+#    - View-source contains <script>injection</script> with the fact?      → mu-plugin runtime
+#    - <meta property="og:..."> contains fact?                            → SEO plugin / RM meta
+#    - <script type="application/ld+json"> contains telephone?             → schema filter
+#    - Inside elementor-widget-* container with fact text?                 → Elementor widget
+#    - Inside .wpcf7-form ... placeholder/value?                           → CF7
+#    - Inside <header> / <footer>?                                         → theme hook
+```
+
+### Global-vs-per-page heuristic
+
+**The 80/20 trick to find the right surface FAST**: pick a page that has **no reason to reference the fact** (e.g. an About / Story / FAQ page that's not a contact form). If the fact STILL appears on that page → it's a **global injection** (surfaces #1, #2, #3, or #4 — global mu-plugin, snippet, schema filter, or theme hook). If it only appears on contact-themed pages → it's a **per-page** surface (#5, #6, or #7).
+
+### Anti-patterns
+
+❌ **Trusting the repo grep** — repo JSON for Elementor pages is stale (DB is source of truth). Mu-plugin file may exist on server but be edited in-place. CF7 forms aren't in repo at all.
+
+❌ **Stopping after finding 1 surface** — when you remove the fact from Elementor widget, the sticky CTA from mu-plugin still shows it. Audit pretty page does NOT mean audit complete.
+
+❌ **Assuming Rank Math Local SEO is the schema source** — if `phone_numbers` is `null` in Local SEO settings but `<script type="application/ld+json">` shows telephone → the source is a Code Snippet enrich filter, NOT Local SEO. Easy false assumption.
+
+❌ **Editing one surface and skipping verification across all sample pages** — re-run the discovery grep across the 5+ sample pages (home / contact / about / blog post / product) after each surgical edit. Each surface fix needs independent verification.
+
+### Reusability
+
+UNIVERSAL — pattern applies to ANY removable fact: phone, email, hotline, fax, address, business hours, license number, old domain name, old founder name, deprecated brand slogan. Same 7 surfaces, same discovery workflow. Apply for brand changes, person changes, contact migrations, deprecation campaigns.

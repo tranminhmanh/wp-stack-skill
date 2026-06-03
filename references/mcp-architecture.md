@@ -275,6 +275,96 @@ When a site shifts from build → maintenance, migration is straightforward:
 
 The transition is non-destructive — both can coexist while you verify.
 
+## MCP Adapter discover/execute mode — diagnose & hook-timing split
+
+Two paired patterns that share the same root mechanic: MCP Adapter HTTP transport runs in **discover/execute mode** (3 META tools per server, regardless of ability count) — when this mode is the target state, two common audit confusions surface.
+
+### Pattern A — "Failed to get ability details: 404" = manifest drift, NOT WP broken
+
+**Symptom**: After WP core or plugin upgrade, MCP tool `wp_<ns>_<name>` (e.g. `wp_rankmath_mcp_get_meta`) returns `MCP error -32603: Failed to get ability details: 404`. Some other tools on the same connector still work. Asymmetry is the key clue.
+
+**Trap**: Easy to conclude "WP upgrade broke the plugin" or "plugin deactivated". WRONG — usually it's the connector manifest cached client-side that's drifted from server's current advertise mode.
+
+**Diagnose ladder** (each step PASS rules out one server-side cause):
+
+| Step | Test | PASS means |
+|---|---|---|
+| a | `GET /wp-json/<plugin>/v1/debug` (authed) → 401 (not 404) | Plugin REST routes alive |
+| b | `GET /wp-abilities/v1/abilities/{ns}/{name}` → 200 | Ability registered |
+| c | `GET/POST .../{ns}/{name}/run` → executes (input error OK) | Ability callable |
+| d | Details JSON has `meta.mcp.public:true` | MCP-exposable |
+
+If a–d all PASS but MCP tool still 404 → **WordPress 100% healthy**, error is connector manifest drift.
+
+**Root cause**: MCP Adapter `mcp-adapter-default-server` runs **discover/execute mode** — JSON-RPC `tools/list` returns only 3 META tools (`mcp-adapter-discover-abilities`, `mcp-adapter-get-ability-info`, `mcp-adapter-execute-ability`). Client connector has cached an **old manifest** advertising direct tools `wp_<ns>_<name>` (from a time the server exposed abilities directly). Calling a direct tool that no longer exists → "Failed to get ability details: 404".
+
+**Confirm test** (JSON-RPC handshake — see [`workflows/claude-mcp-connector-setup.md`](../workflows/claude-mcp-connector-setup.md) §"HTTP MCP initialize handshake"):
+
+```
+initialize → capture Mcp-Session-Id → tools/list
+# → 3 meta-tools only (discover-abilities, get-ability-info, execute-ability)
+
+tools/call execute-ability { "ability_name": "rankmath-mcp/get-posts-stats", "parameters": {} }
+# → {"success":true,"total_posts":91,...}  ✓ server works perfectly
+```
+
+Param names matter: `ability_name` + `parameters` (NOT `ability` / `name` / `input`).
+
+**Fix**: Reconnect connector client-side (e.g. claude.ai → Settings → Connectors → Reconnect) → re-fetch fresh manifest (3 meta-tools). Then call abilities via `mcp-adapter-execute-ability`. **Client-side fix, no WordPress edit.**
+
+### Pattern B — REST list ≠ MCP Adapter discover (hook-timing split)
+
+**Symptom**: Audit abilities on a site. `GET /wp-json/wp-abilities/v1/abilities?per_page=200` returns subset (e.g. core 2 + elementor-mcp 78 + rankmath-mcp 20 = 100). But two known-active plugins (mcp-wp 85 abilities + astra 74 abilities) are MISSING from the list — despite `GET /wp/v2/plugins` confirming both active.
+
+**Trap**: Conclude plugins deactivated / broken after WP upgrade. WRONG — abilities are still registered, just invisible to the REST endpoint.
+
+**Root cause — hook timing split**:
+
+| Plugin | Registers abilities on hook | Visible in REST `/wp-abilities/`? | Visible in MCP Adapter discover? |
+|---|---|---|---|
+| rankmath-mcp | `wp_abilities_api_init` | ✅ | ✅ |
+| core, elementor-mcp | (REST-context hook) | ✅ | ✅ |
+| mcp-wp, astra | `mcp_adapter_init` | ❌ (hook doesn't fire in plain REST request) | ✅ |
+
+`mcp_adapter_init` only fires when MCP Adapter server handles the request (URL `/mcp/...`). It does NOT fire for a plain REST `/wp-abilities/` request. So the REST list is incomplete by design.
+
+**Right way to audit completely**: use MCP Adapter JSON-RPC `discover-abilities` — returns all 179 abilities (astra 74 + mcp-wp 85 + rankmath-mcp 20). Do NOT rely on REST `/wp-abilities/v1/abilities` for "what's registered" — only use it to cross-check abilities registered via `wp_abilities_api_init`.
+
+**Tie-back to Pattern A**: this same hook split explains why a WP upgrade that changed hook firing order broke direct-tool mode for one namespace (rankmath registered via `wp_abilities_api_init`) but not another (mcp-wp / core via `mcp_adapter_init`). Discover/execute mode sees everything → target state for cross-version stability.
+
+### Audit checklist when adopting discover/execute mode
+
+```bash
+# 1. Confirm server runs discover/execute mode
+curl -s -u $U:$P -X POST "$SITE/wp-json/mcp/<server>" \
+  -H "Content-Type: application/json" \
+  -H "MCP-Protocol-Version: 2024-11-05" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"audit","version":"1"}}}' \
+  -D /tmp/headers.txt | jq .result.capabilities
+
+# Capture Mcp-Session-Id
+SID=$(grep -i mcp-session-id /tmp/headers.txt | cut -d: -f2 | tr -d ' \r')
+
+# 2. List tools — expect 3 META tools
+curl -s -u $U:$P -X POST "$SITE/wp-json/mcp/<server>" \
+  -H "Content-Type: application/json" \
+  -H "MCP-Protocol-Version: 2024-11-05" \
+  -H "Mcp-Session-Id: $SID" \
+  -d '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' | jq '.result.tools | length'
+# → 3
+
+# 3. Full ability inventory via discover
+curl -s -u $U:$P -X POST "$SITE/wp-json/mcp/<server>" \
+  -H "Content-Type: application/json" \
+  -H "MCP-Protocol-Version: 2024-11-05" \
+  -H "Mcp-Session-Id: $SID" \
+  -d '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"mcp-adapter-discover-abilities","arguments":{}}}' \
+  | jq '.result.content[0].text | fromjson | .abilities | length'
+# → 179 (or however many — cross-check vs REST list)
+```
+
+If REST count < discover count → some plugins register on `mcp_adapter_init` (not visible to REST). Expected, not broken.
+
 ## Liên quan
 
 - [`wp-abilities.md`](wp-abilities.md) — gọi ability trực tiếp qua REST (bypass MCP bridge)
