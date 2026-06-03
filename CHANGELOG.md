@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.0] — 2026-06-03 (Round 11 distillation)
+
+Round 11 weekly distillation. 6 patterns from 2 production sites since v0.9.0. All UPDATE — 0 new files. Smaller scope than Round 10 — incremental refinement of existing references.
+
+### Changed
+
+- **`workflows/session-distillation.md`** — added §"Periodic skill drift audit — Step 8 every 10-20 promote events". Meta-process pattern: agent prompt template (4 questions — coverage gaps, cross-project inconsistency, skill conflicts, stale content) + 4 resolution categories (Reconcile / Add file / Add workflow / Mark stale). Trigger every 10-20 PROMOTE-TO-SKILL events. The drift audit that produced v0.9.0 itself, now generalized into the workflow.
+- **`references/mcp-architecture.md`** — added §"MCP Adapter discover/execute mode — diagnose & hook-timing split" bundling 2 paired patterns: (a) "Failed to get ability details: 404" = client-side connector manifest drift, NOT WordPress broken (4-step diagnose ladder: REST routes / abilities registered / ability callable / meta.mcp.public:true → if all pass, reconnect client); (b) REST `/wp-abilities/` list ≠ MCP Adapter `discover-abilities` due to hook timing split (`wp_abilities_api_init` vs `mcp_adapter_init`) — `mcp_adapter_init` only fires inside MCP request context, so REST list is incomplete by design. JSON-RPC audit checklist included.
+- **`references/rankmath.md`** — added §12 "Taxonomy option doesn't honor at frontend — MU-plugin filter escape hatch". When `tax_post_tag_robots` / `tax_category_robots` etc. don't reflect at frontend (observed WP 7.0 + RM 1.0.269 quirk), the `rank_math/frontend/robots` filter bypasses settings entirely. Pattern covers `is_tag()`, `is_author()`, `is_date()`, `is_search()`, `is_404()`, `is_post_type_archive()`. Sitemap caveat documented (filter is frontend-only — separate `rank_math/sitemap/*` filter required for sitemap exclusion).
+- **`workflows/comprehensive-audit.md`** — added §"Multi-surface fact-removal audit — rendered HTML is source of truth". 7-surface inventory checklist (mu-plugin runtime injection / Code Snippets global / SEO plugin JSON-LD filter enrich / theme header-footer hooks / Elementor page widgets / CF7 form fields+messages / Rank Math per-page meta) + global-vs-per-page heuristic + discovery workflow + anti-patterns. Apply for phone/email/address/hours/license removal at scale.
+- **`references/non-standard-stacks.md`** — added §"Editing `_elementor_data` when no Elementor MCP — one-shot mu-plugin pattern". Token-guarded REST endpoint reads staged JSON file + `wp_set_current_user` + `\Elementor\Document::save(['elements' => $arr])` → regen `post_content` + post CSS + LSC purge automatically. Self-stubs after one run. Bridges the gap when connector exposes only generic discover/execute (no `elementor-mcp/*`).
+- **`references/code-snippets.md`** — added §"zsh command-substitution + UTF-8 response trap". `$(curl …)` corrupts UTF-8 multibyte responses in zsh (Vietnamese diacritics, emoji, smart quotes). Workaround: write to file, parse via `json.loads(open(path, encoding='utf-8').read())` in Python. Alternative `LC_ALL=en_US.UTF-8` bash less reliable.
+
+### Sources — patterns extracted from
+
+2 production sites this round (since v0.9.0 cutoff 2026-05-17):
+- Skill drift audit methodology (the audit that produced v0.9.0, generalized)
+- MCP Adapter discover/execute mode + hook-timing split (post-WP 7.0 upgrade discovery)
+- Rank Math taxonomy option escape hatch (WP 7.0 + RM 1.0.269 quirk)
+- 7-surface fact-removal audit (phone hotline removal across rendered surfaces)
+- One-shot mu-plugin pattern for Elementor save without elementor-mcp
+- zsh UTF-8 response trap (Vietnamese snippet code)
+
+Brand-leak scan + commit-message scan run pre-push per b3885d0 governance.
+
+[0.10.0]: https://github.com/tranminhmanh/wp-stack-skill/releases/tag/v0.10.0
+
 ## [0.9.0] — 2026-05-17 (reconcile cross-project reality)
 
 Cross-project audit reveals skill diverged từ deployed reality on 5+ inherited production sites. 3 hard contradictions resolved + 2 new files added để cover gaps.

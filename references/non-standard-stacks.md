@@ -197,6 +197,135 @@ Template section để paste vào project CLAUDE.md khi detect non-Astra/Element
 - Builder-specific widget adding
 ```
 
+## Editing `_elementor_data` when no Elementor MCP — one-shot mu-plugin pattern
+
+A different gap: the site **does** use Elementor but the MCP connector exposes only **generic discover/execute abilities** (mcp-wp + rankmath + custom) without `elementor-mcp/*` abilities. You can't call `elementor-mcp-add-heading`, `elementor-mcp-update-widget`, etc. — those tools simply aren't in the connector's tool list.
+
+Common scenarios:
+
+- Merged single-endpoint connector (e.g. `<site>-all`) built without including `elementor-mcp` plugin's abilities
+- Site has Elementor active but no `elementor-mcp` plugin installed (plugin license unwilling, plugin update broke a feature, plugin deactivated by user)
+- Audit-only connector (read-only abilities) by design
+- New connector while waiting for the user to install/activate elementor-mcp
+
+In these cases, `mcp-wp/edit-page` (or `wp/v2/pages/{id}`) accepts content / meta but **does not regenerate** `post_content` from `_elementor_data` after the JSON is updated. The page DB row is half-saved → frontend shows stale CSS / old layout / broken widgets.
+
+### The one-shot mu-plugin pattern
+
+Build a single-use mu-plugin that bridges the gap:
+
+1. **Stage the new Elementor JSON** on the server file system (cPanel Fileman `save_file_content`, or REST upload)
+2. **Drop a token-guarded mu-plugin** that reads that JSON + calls Elementor's `Document::save()` (regenerates `post_content` + post CSS + purges LSC)
+3. **Hit the mu-plugin's endpoint** once with the token
+4. **Self-stub the mu-plugin** (overwrite with empty content) so it can't be invoked again
+
+```php
+<?php
+// wp-content/mu-plugins/oneshot-elementor-save.php
+/**
+ * Plugin Name: One-shot Elementor JSON save
+ * Description: Reads staged Elementor JSON + calls Document::save(). Self-stubs after run.
+ * Version: 1.0
+ */
+if ( ! defined( 'ABSPATH' ) ) exit;
+
+add_action( 'rest_api_init', function () {
+    register_rest_route( 'oneshot/v1', '/elem-save', [
+        'methods'             => 'POST',
+        'permission_callback' => '__return_true',  // token gated below
+        'callback'            => function ( WP_REST_Request $req ) {
+            $token = $req->get_param( 'token' );
+            if ( $token !== 'REPLACE_WITH_RANDOM_TOKEN' ) {
+                return new WP_Error( 'forbidden', 'Bad token', [ 'status' => 403 ] );
+            }
+            $post_id  = absint( $req->get_param( 'post_id' ) );
+            $json_path = (string) $req->get_param( 'json_path' );
+
+            if ( ! $post_id || ! is_readable( $json_path ) ) {
+                return new WP_Error( 'bad_input', 'post_id or json_path invalid', [ 'status' => 400 ] );
+            }
+
+            $raw = file_get_contents( $json_path );
+            $arr = json_decode( $raw, true );
+            if ( ! is_array( $arr ) ) {
+                return new WP_Error( 'bad_json', 'JSON decode failed', [ 'status' => 422 ] );
+            }
+
+            // Elevate to editor — Document::save() checks current_user_can()
+            wp_set_current_user( ABS_EDITOR_USER_ID );  // replace with real editor user id
+
+            if ( ! class_exists( '\Elementor\Plugin' ) ) {
+                return new WP_Error( 'no_elementor', 'Elementor not active', [ 'status' => 500 ] );
+            }
+
+            $doc = \Elementor\Plugin::$instance->documents->get( $post_id );
+            if ( ! $doc ) {
+                return new WP_Error( 'no_doc', 'No Elementor document for post', [ 'status' => 404 ] );
+            }
+            if ( ! $doc->is_editable_by_current_user() ) {
+                return new WP_Error( 'no_cap', 'Document not editable by current user', [ 'status' => 403 ] );
+            }
+
+            $doc->save( [ 'elements' => $arr ] );  // regen post_content + CSS + purge LSC
+
+            return [
+                'ok'      => true,
+                'post_id' => $post_id,
+                'elements_count' => count( $arr ),
+            ];
+        },
+    ] );
+} );
+```
+
+**Invocation**:
+
+```bash
+# 1. Upload new Elementor JSON to server
+# (cPanel Fileman save_file_content or REST file-upload)
+
+# 2. Drop mu-plugin via Fileman save_file_content (write the PHP above)
+
+# 3. Call endpoint
+curl -s -u $U:$P -X POST "$SITE/wp-json/oneshot/v1/elem-save" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "token": "REPLACE_WITH_RANDOM_TOKEN",
+    "post_id": 123,
+    "json_path": "/home/<user>/<domain>/wp-content/uploads/staged-elem-123.json"
+  }' | jq .
+
+# 4. Self-stub the mu-plugin (overwrite with empty PHP)
+# (Fileman save_file_content with content="<?php // self-stubbed after one-shot run")
+```
+
+### Why this pattern works
+
+- `_elementor_data` CAN be read via REST `?context=edit&_fields=meta` (in sites that registered the meta show-in-rest) — for **read** only.
+- For **write + regen**, `update_post_meta` updates the DB row but doesn't regenerate `post_content`. Page frontend stays stale.
+- `\Elementor\Document::save()` is the **canonical** save path — it regenerates `post_content`, post CSS file, and triggers LSC purge hook.
+- Token-guarded one-shot endpoint avoids leaving a permanent backdoor while still letting the AI/agent self-serve the save call.
+
+### Caveats
+
+- `ABS_EDITOR_USER_ID` must be a real user with `edit_posts` capability on the target post. The editor user (e.g. `claude-mcp` Editor role) typically suffices.
+- The mu-plugin **must** be removed (or self-stubbed) after the one-shot run. Don't leave it active — token in the URL = remote code execution if leaked.
+- LSC purge happens automatically because `Document::save()` triggers `save_post` hooks. If your cache plugin doesn't hook `save_post`, add explicit purge after `$doc->save()`.
+- For sites without cPanel Fileman, stage the JSON via REST upload endpoint or as a base64 param in the POST body (decode + write inside the callback).
+
+### When to use vs not
+
+| Situation | Use one-shot? |
+|---|---|
+| Single page rebuild, no Elementor MCP available | ✅ Right tool |
+| Bulk rebuild 10+ pages | ⚠️ Consider deploying full `elementor-mcp` plugin instead |
+| Site already has Elementor MCP connected | ❌ Use Elementor MCP directly |
+| Read-only audit / data extraction | ❌ Use REST `?context=edit&_fields=meta` |
+
+### Reusability
+
+UNIVERSAL — pattern applies to any site running Elementor where the MCP connector lacks Elementor abilities. Adapt the callback for other "save via internal API" needs: ACF field bulk update, JetEngine relationship rewrites, WooCommerce product variation regen.
+
 ## Cross-references
 
 | Topic | See |
@@ -206,3 +335,5 @@ Template section để paste vào project CLAUDE.md khi detect non-Astra/Element
 | WP REST core abilities | [`wp-abilities.md`](wp-abilities.md) |
 | Direct REST bypass MCP | [`wp-abilities.md`](wp-abilities.md) §When direct REST > MCP bridge |
 | Detect stack at audit time | [`../workflows/comprehensive-audit.md`](../workflows/comprehensive-audit.md) |
+| MU-plugin token-guard patterns | [`mu-plugin-patterns.md`](mu-plugin-patterns.md) |
+| Elementor MCP (full) | [`elementor-mcp.md`](elementor-mcp.md) |

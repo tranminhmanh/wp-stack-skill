@@ -117,6 +117,58 @@ curl -H "Authorization: Basic $B64" \
 
 ❌ **Storing the snippet code in your project repo** — the code lives in the WP DB; your repo holds the patcher script, not the snippet source. Treat snippets as project memory in the WP DB, scripts as the version-controlled patcher.
 
+## zsh command-substitution + UTF-8 response trap
+
+When snippet `code` contains UTF-8 multibyte characters (Vietnamese diacritics, emojis, smart quotes, em-dashes), zsh command substitution `$(curl …)` may corrupt the response. Two reasons:
+
+- zsh's word-splitting + globbing on `$(...)` output can mangle byte sequences interpreted as locale-mismatched characters
+- Some shells (or terminal locale settings) re-interpret bytes through the active locale before storing in the variable, garbling multi-byte sequences
+
+Result: parse it via `jq` from the variable → silently truncated or `"unicode escape"` errors.
+
+```bash
+# ❌ WRONG — works on ASCII-only responses, breaks on UTF-8 snippet code
+RESPONSE=$(curl -s -H "Authorization: Basic $B64" "$SITE/wp-json/code-snippets/v1/snippets/13")
+echo "$RESPONSE" | jq -r '.code'  # may be truncated, may show \uXXXX glitches
+```
+
+### Workaround — write to file, parse via Python
+
+```bash
+# ✅ RIGHT — bypass shell's variable handling entirely
+curl -s -H "Authorization: Basic $B64" \
+  "$SITE/wp-json/code-snippets/v1/snippets/13" \
+  -o /tmp/snippet-13.json
+
+python3 -c "
+import json
+data = json.loads(open('/tmp/snippet-13.json', encoding='utf-8').read())
+print(data['code'])
+" > /tmp/snippet-13.php
+```
+
+Python `open(..., encoding='utf-8')` + `json.loads()` (with `strict=False` if control chars are present) preserves bytes exactly.
+
+### Alternative — bash with UTF-8 locale
+
+If you're locked into bash + shell variables:
+
+```bash
+LC_ALL=en_US.UTF-8 \
+RESPONSE=$(curl -s -H "Authorization: Basic $B64" "$SITE/wp-json/code-snippets/v1/snippets/13")
+```
+
+Less reliable than the file-route — locale variations across shells / terminal / SSH sessions add fragility. Default to the file-route for CRUD on snippet `code` containing non-ASCII.
+
+### When this matters
+
+- Snippet contains Vietnamese / Chinese / Korean / Japanese strings in PHP literals
+- Snippet contains JavaScript with emoji or curly quotes
+- Snippet contains author display name, brand slogan, or marketing copy in non-Latin script
+- Pretty much any production snippet on a non-English locale site
+
+When in doubt: file-route. The 1 extra command is cheap; debugging silent truncation later is not.
+
 ## Cross-references
 
 - [`references/seo-checklist.md`](seo-checklist.md) "Duplicate OG/meta detection" — what to scan for in legacy snippets

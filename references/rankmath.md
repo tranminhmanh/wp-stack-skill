@@ -424,10 +424,98 @@ To ease migration from older Rank Math API versions, `update-meta` accepts the c
 
 Pick one convention per script and stick with it. Don't mix aliases within a single call — schema validation may catch the inconsistency.
 
+## 12. Taxonomy option doesn't honor at frontend — MU-plugin filter escape hatch
+
+Rank Math taxonomy archive controls (`tax_post_tag_custom_robots` + `tax_post_tag_robots`, `tax_category_custom_robots`, etc.) are written to the `rank-math-options-titles` option, but on certain WP × RM version combinations the **frontend renderer ignores them silently** — tag/category/author/date archives keep rendering the GLOBAL default robots tag (`index, follow, max-snippet:-1, ...`) instead of the per-taxonomy override.
+
+### Symptom
+
+```bash
+# Option WAS written correctly
+curl -u $U:$P "$SITE/wp-json/<plugin>/v1/update-titles-option" -d '{"key":"tax_post_tag_robots","value":["noindex"]}'
+# → {"saved":false,"before":["noindex"],"after":["noindex"]}  ← already set
+
+# Force write cycle off→on to be sure
+# → {"saved":true}  ← truly persisted
+
+# Frontend STILL renders index:
+curl -s "$SITE/tag/example/" | grep '<meta name="robots"'
+# → <meta name="robots" content="follow, index, max-snippet:-1, ..." />  ← global default, NOT noindex
+```
+
+### Diagnostic — rule out cache FIRST
+
+Don't guess cache. Inspect headers:
+
+```bash
+curl -sI "$SITE/tag/example/" | grep -i 'x-litespeed-cache\|x-cache\|cf-cache-status'
+# x-litespeed-cache: miss  ← FRESH render, not stale cache
+```
+
+If `cache: miss` (or `revalidated`) and robots tag still wrong → it's not a cache problem. It's **RM frontend not honoring the taxonomy option** on this install.
+
+### Root cause
+
+Specific WP × RM version combos (observed WP 7.0 + Rank Math 1.0.269) drop the option read on certain taxonomy hooks. The DB has the correct value; the frontend renderer code path doesn't read it. Same quirk affects `tax_<tax>_sitemap` (sitemap inclusion flag).
+
+### Reliable fix — MU-plugin filter bypasses settings entirely
+
+Hook directly into RM's `rank_math/frontend/robots` filter — runs at render time, doesn't depend on the broken option-read path:
+
+```php
+<?php
+// wp-content/mu-plugins/rm-taxonomy-noindex.php
+add_filter( 'rank_math/frontend/robots', function ( $robots ) {
+    if ( is_tag() ) {
+        $robots['index']  = 'noindex';
+        $robots['follow'] = 'follow';
+    }
+    // Add more conditionals as needed:
+    // if ( is_author() ) { $robots['index'] = 'noindex'; }
+    // if ( is_date() )   { $robots['index'] = 'noindex'; }
+    // if ( is_search() ) { $robots['index'] = 'noindex'; }
+    return $robots;
+}, 99 );
+```
+
+Deploy via `rankmath-mcp/write-mu-plugin` (params: `file_name` + `content_base64` + `overwrite`) or cPanel Fileman upload.
+
+Verify on a CLEAN URL (no query string to defeat cache):
+
+```bash
+curl -sI "$SITE/tag/example/" | grep -i 'x-litespeed-cache'
+# x-litespeed-cache: miss  ← confirm fresh
+curl -s "$SITE/tag/example/" | grep '<meta name="robots"'
+# → <meta name="robots" content="follow, noindex" />  ✓
+# Control: home page should stay index
+curl -s "$SITE/" | grep '<meta name="robots"'
+# → <meta name="robots" content="index, follow, ..." />  ✓
+```
+
+### Caveats
+
+- **Filter is frontend-only** — `rank_math/sitemap/*` filters run in a different code path. Tag URLs still appear in `post_tag-sitemap.xml`. Benign because `noindex` is authoritative — Google drops them after re-crawl, GSC shows "Submitted URL marked noindex" (an informational notice, not an error). For sitemap cleanliness, add `rank_math/sitemap/post_tag/include_empty` etc. filters separately or use the RM UI toggle + clear RM sitemap cache.
+- **App Password Basic auth doesn't authenticate at frontend page context** — `current_user_can()` returns false for curl-with-Basic-auth on `/tag/example/`. Diagnostic logic gated by `current_user_can` won't trigger. The filter pattern above doesn't depend on auth; just always overrides for the taxonomy condition.
+
+### Detection heuristic — when to consider noindex'ing archive pages
+
+Tag/author/date archives bloating relative to post count signals auto-tagging noise (FOXAI, careless content tools) or thin content. Examples:
+
+- 182 tags / 91 posts (2:1 ratio) with near-duplicate slugs (`kham-thai`, `kham-thai-o-dau`, `cac-moc-kham-thai`)
+- 30 authors / 10 published posts (multi-author site without editorial discipline)
+- Date archives on a site that doesn't display them in nav
+
+For YMYL sites (health, finance, legal), thin-content archive bloat = site-wide Helpful Content quality risk. `noindex` on tag/author/date archives is a safe default for clinic blogs, niche commerce sites, and small B2B blogs.
+
+### Reusability
+
+UNIVERSAL — applies to any WP + Rank Math site. Filter pattern works for `is_tag()`, `is_author()`, `is_date()`, `is_search()`, `is_404()`, `is_post_type_archive()`. When taxonomy/archive robots options don't reflect at frontend, the filter is the escape hatch.
+
 ## Liên quan
 
 - [`wp-abilities.md`](wp-abilities.md) — REST direct execution pattern
 - [`schema-jsonld.md`](schema-jsonld.md) — Rank Math auto-emits Organization `@id` schema, multi-source coexistence
 - [`workflows/litespeed-cache-mgmt.md`](../workflows/litespeed-cache-mgmt.md) — WP-Abilities REST cache bust
 - [`workflows/build-mcp-wrapper-plugin.md`](../workflows/build-mcp-wrapper-plugin.md) — wrap Rank Math REST as MCP abilities
-- Insight sources: weekly distillation 2026-05-13 (lazy compute behavior, redirect override semantics, response key conventions)
+- [`mu-plugin-patterns.md`](mu-plugin-patterns.md) — bridge/polyfill/force-option patterns for MU-plugins
+- Insight sources: weekly distillation 2026-05-13 (lazy compute, redirect override, response keys); 2026-05-23 (taxonomy option escape hatch)
