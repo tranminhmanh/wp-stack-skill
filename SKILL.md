@@ -99,6 +99,9 @@ Summary:
 | PHP error_log + opcache + huge log filter (shared hosting debug) | `references/troubleshooting.md` |
 | Site uses Flatsome / WPBakery / Bricks / non-standard builder | `references/non-standard-stacks.md` ⚠️ DON'T propose Elementor MCP tools |
 | Deploy rankmath-mcp wrapper plugin (4 distribution paths) | `workflows/deploy-rankmath-mcp-wrapper.md` |
+| Full-site SEO audit scoring /60 (multi-agent, crawl-once) | `workflows/full-site-seo-audit.md` |
+| GA4 write config (custom dimensions, key events) via service account | `workflows/ga4-admin-api.md` |
+| WordPress hack forensic (rogue sitemap / .htaccess injection) | `references/security.md` |
 
 ## Anti-patterns — STRICTLY avoid
 

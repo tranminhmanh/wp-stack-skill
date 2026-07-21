@@ -5,6 +5,48 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.0] — 2026-07-21 (Round 12 distillation)
+
+Round 12 weekly distillation covering ~7 weeks since v0.10.0. 12 patterns promoted from 2 production sites (16 candidates, 3 bundled into 1 update, 1 skipped as duplicate). 10 UPDATE + 2 NEW files.
+
+### Added — 2 new workflow files
+
+- **`workflows/full-site-seo-audit.md`** — full-site multi-agent SEO audit /60 template. 4-phase pipeline: (1) 1 Python stdlib crawler (threadpool max=5 LVE-safe, no-follow-redirect) → JSON with per-URL signals; (2) mechanical inline aggregate (dup titles, noindex, thin content, missing meta, 410 Gone, H1 hygiene, alt gap); (3) 8-agent Workflow scoring /10 per Google category (Tech/CWV/Content-EEAT/On-page/Schema/Local + spam-gate + index-hygiene gate) with cited developers.google.com/search/docs URLs; (4) adversarial verify each critical/high finding on live pages before including in report. GSC field-data fallback documented when PSI API quota blocks. ~13 min wall-clock for mid-size site, ~19 agents.
+- **`workflows/ga4-admin-api.md`** — GA4 Admin API v1beta write via service account + openssl JWT (no PyJWT needed). Solves Site Kit's `analytics.readonly` cage: cannot write custom dimensions / key events via App-Password REST context. Complete recipe: enable APIs in GCP → create SA + download key → grant SA access on GA4 property (2-layer permission model, distinguishable errors) → JWT sign via `openssl dgst -sha256 -sign` (same pattern as Indexing API) → POST customDimensions / keyEvents. Includes audit-existing-key-events pattern (delete polluting `first_visit` + auto-`click` + `purchase` before adding contact-intent conversions); `countingMethod: ONCE_PER_SESSION` for contact intent.
+
+### Changed — 10 file updates
+
+- **`references/security.md`** — added §"WordPress hack forensic — rogue sitemap via `.htaccess` injection". Symptom (GSC 404 spike, 27k+ URLs matching spam patterns), forensic ladder (probe spam URL normal-UA vs Googlebot; fetch `sxallsitemap.xml`; cPanel scan `.htaccess` injection + `x.php` + uploads/*.php + wp-config eval/gzinflate), cleanup sequence with `[G,L]` 410 Gone rules (Google removes 410 faster than 404), pattern safety rules (specific regex to not match legit URLs), benign 404 backlog interpretation.
+- **`references/deployment.md`** — added §"Delete / trash / move via API2 — different path, same auth". When UAPI Fileman strips delete, most cPanel hosts still expose API2 `Fileman::fileop` with `unlink`/`trash`/`copy`/`move`. Path: `/json-api/cpanel?cpanel_jsonapi_apiversion=2&cpanel_jsonapi_module=Fileman&cpanel_jsonapi_func=fileop&op=unlink&sourcefiles=...`. Detection probe distinguishes "endpoint alive but target missing" from "endpoint blocked". Complements existing UAPI note about missing delete/rename/move.
+- **`references/schema-jsonld.md`** — added §"JSON-LD graph consolidation via `rank_math/json_ld` filter — additive enrich pattern" bundling 3 insights: (a) MU-plugin filter with @id-SUFFIX match (`substr($id,-13)==='#organization'`) for version-safe additive enrich via `array_merge`; (b) anti-pattern where sub-object with `@id` inside a property (`contactPoint`/`address`) creates a node definition → duplicate `@id` collision on pages that also define that node — inline value objects WITHOUT `@id` for non-canonical uses; (c) safe removal sequence for central JSON-LD nodes (`elementor-mcp/find-element` for inbound-ref discovery → repoint refs to replacement BEFORE deletion → deploy injector → verify grep counts).
+- **`references/rankmath.md`** — added §13 "`update-meta` raw `meta` map silently drops non-`rank_math_*` keys — use dedicated abilities". Helper `rmcp_meta_write()` prefix-filters by `rank_math_`; other keys → `updated: []` (empty array) despite `success: true` and `message: "Meta updated"`. Alt text attachment: use `mcp-wp/edit-media {attachment_id, alt_text}` instead. Broader "verify-before-trust" rule for MCP writes (check `updated` array, verify live, don't trust `message` field).
+- **`references/elementor-mcp.md`** — added §"FAQ toggle widget `faq_schema=yes` — tab content becomes FAQPage JSON-LD". Widget setting couples content + schema (edit visible tab = edits schema too). YMYL sd-policy check: attribution mismatch (specialty claim + facility name) risks manual action for medical / financial sites. Partial update trap: `tabs` array is REPLACED whole, not merged per-item — must resend full array preserving each tab's `_id`. Reframe pattern for YMYL claims.
+- **`references/mu-plugin-patterns.md`** — added §"Safe deploy pattern for `write-mu-plugin` — base64 round-trip + SIZE-MATCH". 5-step: local `php -l` → `base64 -i f | base64 -D | diff` round-trip verify → deploy → `response.size == wc -c` local file (transcription proof) → verify live homepage 200 + 0 PHP-error markers. Wrapper server-side guards (first-byte `<?php` check, path traversal), recovery pattern via stub deploy when broken.
+- **`workflows/litespeed-cache-mgmt.md`** — added 2 sections. (1) §"Programmatic purge via `do_action('litespeed_purge_all')` — works from a mu-plugin" — updates prior "REST purge fails" note; 1-time guard via option bump pattern for version-triggered purge. (2) §"JS Delay (NOT Defer) — analytics + form-tracking traps" — LSC's "Delayed" JS setting waits for `isTrusted` interaction event. Three traps: (a) inline listener scripts need `data-no-optimize="1"` (+ `data-cfasync="false"` for Cloudflare Rocket Loader); (b) `dataLayer.push` not `gtag()` direct (queue survives async load); (c) jQuery poll trap — short polls (18s) miss jQuery when it loads after user interaction; extend to 10 min. `window.fetch`/`sendBeacon` hook pattern for verifying `/g/collect` requests without GA4 UI.
+- **`workflows/new-site-setup.md`** — added §"After adding blog / CPT — nav menu assignment check (`wp_page_menu()` fallback trap)". Symptom: Astra falls back to `wp_page_menu()` listing every top-level page (including Cart / Checkout / My account) when `primary` menu location unassigned — header breaks on all theme-default pages while homepage / Canvas stay OK. Detection: `wp/v2/menus=[]` or menu-locations all `0`. Fix via REST: `POST /menus` → `POST /menu-items` (taxonomy type for categories, `parent` for submenus) → `PUT /menus/{id} locations:[]`. Post-add checklist for blog / CPT.
+- **`references/mcp-architecture.md`** — added Pattern C to §"MCP Adapter discover/execute mode": "`execute-ability` flapping while `discover`/`get-info` remain OK". Distinct from Pattern A (404 manifest drift) and Pattern B (hook-timing). Fallback ladder: REST direct (App Password) → cPanel Fileman UAPI + API2 → one-shot mu-plugin for DB writes. Rule: after 2 consecutive execute failures on distinct abilities, switch fallback mode — don't retry.
+- **`workflows/bulk-content-automation.md`** — added §"Content injection via mu-plugin `the_content` filter — DRY alternative to editing N posts". Instead of updating 24 blog posts with CTA + related-posts, 1 mu-plugin filter: guard `is_singular('post') && in_the_loop() && is_main_query()` → append CTA + `WP_Query` related-in-category. Homepage blog section via `wp_footer` + `is_front_page()` + `insertAdjacentHTML` after known anchor. Auto-applies to new posts, O(1) add/remove.
+
+### Sources — patterns extracted from
+
+2 production sites this round (across ~7 weeks since v0.10.0):
+- WordPress hack forensic (rogue `sxallsitemap.xml` via `.htaccess` injection)
+- cPanel Fileman API2 vs UAPI (delete/trash/move endpoint discovery)
+- JSON-LD graph consolidation methodology (`rank_math/json_ld` filter + sub-object `@id` collision + safe node removal)
+- Rank Math `update-meta` silent drop (prefix-whitelist gotcha)
+- Elementor FAQ toggle `faq_schema=yes` (tab-schema coupling + YMYL sd-policy)
+- Safe `write-mu-plugin` deploy (base64 round-trip + SIZE-MATCH)
+- LiteSpeed JS Delay traps (analytics listener attach timing, dataLayer.push, jQuery poll)
+- LiteSpeed programmatic purge via `do_action('litespeed_purge_all')`
+- GA4 Admin API via service account + openssl JWT (Site Kit readonly cage escape)
+- WordPress nav menu fallback (`wp_page_menu()` breaks non-Canvas pages)
+- MCP `execute-ability` flap fallback (REST + cPanel)
+- Bulk content via `the_content` filter (DRY vs N-post edit)
+
+Brand-leak scan + commit-message scan run pre-push per b3885d0 governance.
+
+[0.11.0]: https://github.com/tranminhmanh/wp-stack-skill/releases/tag/v0.11.0
+
 ## [0.10.0] — 2026-06-03 (Round 11 distillation)
 
 Round 11 weekly distillation. 6 patterns from 2 production sites since v0.9.0. All UPDATE — 0 new files. Smaller scope than Round 10 — incremental refinement of existing references.

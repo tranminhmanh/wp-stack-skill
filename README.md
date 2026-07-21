@@ -65,7 +65,7 @@ wp-stack/
 ├── SKILL.md                          ← Entry point (Claude reads first)
 ├── README.md                         ← This file
 │
-├── references/                       ← Knowledge base (24 files)
+├── references/                       ← Knowledge base (26 files)
 │   ├── stack.md                      ← Standard stack and versions
 │   ├── design-tokens.md              ← Spacing / typography / shadows
 │   ├── elementor-mcp.md              ← MCP cheatsheet + widget gotchas
@@ -91,7 +91,7 @@ wp-stack/
 │   ├── mu-plugin-patterns.md         ← Suppress upstream Closure / bridge / polyfill patterns
 │   └── pitfalls.md                   ← 50+ pitfalls with detection + fix
 │
-├── workflows/                        ← Step-by-step procedures (21 files)
+├── workflows/                        ← Step-by-step procedures (24 files)
 │   ├── new-site-setup.md             ← Set up a new site A → Z
 │   ├── add-cpt.md                    ← Create a Custom Post Type
 │   ├── theme-builder-loop.md         ← Build a Loop template

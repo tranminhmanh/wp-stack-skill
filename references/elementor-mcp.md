@@ -871,3 +871,73 @@ The two upload endpoints take **different code paths**:
 | `/wp/v2/media` (REST) | Basic Auth (App Password) | Same hooks BUT through different wrapper code | 500 fatal silent if a hook crashes |
 
 **Workaround when REST is broken**: drag-drop via WP Admin → still works. Useful for bulk upload if the REST script fails. Also use the MCP `sideload_image` ability → a third code path — fallback if both above fail.
+
+## FAQ toggle widget `faq_schema=yes` — tab content becomes FAQPage JSON-LD
+
+The Elementor `toggle` widget has a setting `faq_schema` (default `no`). Setting it to `yes` emits a `FAQPage` JSON-LD block on the rendered page, generated **from the widget's `tabs` array** — each `tab_title` becomes a `Question`, each `tab_content` becomes an `Answer`.
+
+This is a **content-schema-coupling** — the SAME text you display to users is what's structured for Google's rich snippets. So changes to tab content propagate automatically to schema. But it also means:
+
+- Fixing the visible FAQ text = fixes the schema (single edit)
+- Overclaims in visible FAQ = overclaims in schema (double-visible risk)
+
+### YMYL sd-policy check when `faq_schema=yes`
+
+Google's structured data policy ([sd-policies](https://developers.google.com/search/docs/appearance/structured-data/sd-policies)) says FAQPage markup must reflect content on the page and must not be misleading. For YMYL sites (medical, financial, legal), that policy applies with real teeth — a violation risks manual action or drop from rich results.
+
+**Anti-pattern (real 2026-06-18 finding)**:
+
+```
+Tab title:    "Tỷ lệ thành công IVF tại Mai Thanh?"
+Tab content:  "40–60% trên chu kỳ..."
+```
+
+Problem: the FAQ appears on a clinic's site that DOESN'T perform IVF (they only connect patients to IVF centers). The clinic name attached to a success rate they don't produce = **sd-policy violation** (medical claim + attribution mismatch) + **medical advertising risk** in most jurisdictions.
+
+Reframe pattern:
+
+```
+Tab title:    "Cách tìm hiểu tỷ lệ thành công IVF?"
+Tab content:  "Các yếu tố quyết định gồm tuổi, phác đồ, kinh nghiệm bác sĩ.
+              [Clinic name] kết nối bệnh nhân tới các trung tâm chuyên IVF."
+```
+
+Frame as **general information** + **the clinic's actual role** — no attributed statistic, no scope-of-practice implication.
+
+### Partial update trap — `tabs` array is REPLACED, not merged per-item
+
+When editing FAQ content via `elementor-mcp/update-widget`, the `tabs` setting is treated as a whole-array replacement:
+
+```json
+{
+  "widget_id": "4630e64a",
+  "settings": { "tabs": [ {...tab1...}, {...tab2...} ] }
+}
+```
+
+If you send only the tab you want to fix → the OTHER tabs are DELETED. You must resend the **full `tabs` array** including untouched tabs, preserving each tab's `_id` field (Elementor's internal identifier — dropping it may cause rendering issues or template reference breaks).
+
+**Right pattern**:
+
+```bash
+# 1. Read current widget
+elementor-mcp/get-element-settings widget_id=4630e64a
+
+# 2. Modify the ONE tab you care about (in local JSON)
+# ... edit tabs[3].tab_content ...
+
+# 3. Send FULL tabs array back (all N tabs, edited + unedited alike, each with _id preserved)
+elementor-mcp/update-widget widget_id=4630e64a settings.tabs=<full array>
+
+# 4. Verify — visible tab text + FAQPage schema both reflect the edit
+curl -s "$SITE/page/" | grep -A1 "Câu hỏi tại"
+curl -s "$SITE/page/" | jq '.["@graph"][] | select(."@type"=="FAQPage") | .mainEntity[3]'
+```
+
+### When to disable `faq_schema=yes`
+
+- Toggle widget used for non-FAQ content (tabs are just visual accordion for content sections, not Q&A pairs)
+- FAQ visible on page but Google-facing FAQ lives in `references/schema-jsonld.md` inline JSON-LD (single source of truth, avoid double-schema)
+- Content-policy risk high enough that manual FAQPage curation > automatic emission
+
+To disable: `settings.faq_schema = "no"`.

@@ -365,6 +365,28 @@ curl -s -u $U:$P -X POST "$SITE/wp-json/mcp/<server>" \
 
 If REST count < discover count → some plugins register on `mcp_adapter_init` (not visible to REST). Expected, not broken.
 
+### Pattern C — `execute-ability` flapping while `discover` / `get-info` remain OK
+
+Third variant that can co-exist with Patterns A + B: **`execute-ability` fails on every call** for an entire session (`"An error occurred"` / 500 / timeout) even though `discover-abilities` and `get-ability-info` on the same server work fine. Persists across Claude Code session restarts. Not a manifest drift (Pattern A) — the server is advertising the meta-tools correctly. Not a hook-timing issue (Pattern B) — abilities ARE discoverable, just not executable via the MCP transport.
+
+**Fallback ladder — don't burn cycles retrying**:
+
+| Try | Method | Use for |
+|---|---|---|
+| 1 | REST direct (App Password, super_admin or Editor) | `wp/v2/*` CRUD, `code-snippets/v1/*`, `menu-items/v1/*`, custom plugin REST namespaces |
+| 2 | cPanel Fileman UAPI + API2 (see [`deployment.md`](../references/deployment.md)) | mu-plugin deploy, file listing, delete/trash/move |
+| 3 | Direct database mutation via a token-guarded one-shot mu-plugin (see [`non-standard-stacks.md`](non-standard-stacks.md) §"One-shot mu-plugin pattern") | Elementor `Document::save()`, direct `update_option()`, transient purge |
+
+The rule is: **when `execute-ability` errors twice in a row on distinct ability names**, switch fallback modes immediately. Don't retry the same ability 5 times hoping for a different result — the transport itself is broken. Working APIs (REST + cPanel) are always documented in the project's `CLAUDE.md` — use them.
+
+**Diagnostic distinction**:
+
+- Pattern A (404 manifest drift): specific tool names fail, others on same connector work → reconnect fixes it
+- Pattern B (hook timing): entire namespaces missing from REST list → discovery source problem
+- Pattern C (execute flap): EVERY execute call fails, discover/get-info work → transport-layer problem, fallback needed
+
+For Pattern C, don't spend session time debugging the MCP server — the fallback paths get the same work done via a different transport. Report the flap to the user (they may want to file a bug or restart the server) but keep working.
+
 ## Liên quan
 
 - [`wp-abilities.md`](wp-abilities.md) — gọi ability trực tiếp qua REST (bypass MCP bridge)
