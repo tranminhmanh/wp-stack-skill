@@ -163,3 +163,67 @@ Site uses default theme header/footer (Astra header builder)?
 ```
 
 Astra Free 4.13.x does NOT auto-suppress the header when a Theme Builder template is active → you need a mu-plugin bridge (see `references/astra-customizer.md` "Astra Free + Theme Builder bridge").
+
+## After adding blog / CPT — nav menu assignment check (`wp_page_menu()` fallback trap)
+
+**Symptom**: You publish blog posts (or a new CPT) and everything looks fine on the homepage. Then you click a blog post link and the header on the post page is **broken** — it lists every page on the site (including Cart / Checkout / My account / legal pages) with each page's full SEO title, header wraps to multiple lines, layout shattered.
+
+**Root cause**: Astra falls back to `wp_page_menu()` when no menu is assigned to `primary` location. `wp_page_menu()` outputs a `<ul>` of ALL top-level pages, using each page's title verbatim. Homepage / Canvas templates don't hit this because they build their own header inside Elementor data → don't render the theme's default header at all. Theme-default templates (blog post single, legal pages, WooCommerce cart / checkout / account) DO render the theme header → catch the fallback.
+
+**Detection**:
+
+```bash
+# 1. Are ANY menus registered?
+curl -s -u $U:$P "$SITE/wp-json/wp/v2/menus" | jq 'length'
+# → 0 = no menu exists → fallback active on every theme-default page
+
+# 2. Which menu is assigned to each location?
+curl -s -u $U:$P "$SITE/wp-json/wp/v2/menu-locations" | jq '{primary,mobile_menu,footer_menu} | map_values(.menu)'
+# → { "primary": 0, "mobile_menu": 0, "footer_menu": 0 } = all unassigned → fallback active
+
+# 3. Fetch a blog post page and count top-level nav items in the header
+curl -s "$SITE/hello-world/" | grep -oE '<a[^>]+class="[^"]*menu-item[^"]*"' | wc -l
+# → 15+ = fallback listing every page = broken
+```
+
+### Fix — create menu + assign to all locations via REST
+
+```bash
+# 1. Create menu
+MENU_ID=$(curl -s -u $U:$P -X POST "$SITE/wp-json/wp/v2/menus" \
+    -H "Content-Type: application/json" \
+    -d '{"name": "Main Nav"}' | jq -r .id)
+
+# 2. Add menu items — top-level pages
+for PAGE_ID in <home-id> <about-id> <blog-id> <contact-id>; do
+    curl -s -u $U:$P -X POST "$SITE/wp-json/wp/v2/menu-items" \
+        -H "Content-Type: application/json" \
+        -d "{\"menus\": $MENU_ID, \"type\": \"post_type\", \"object\": \"page\", \"object_id\": $PAGE_ID}"
+done
+
+# 3. Add menu items — categories (submenu under blog)
+BLOG_ITEM_ID=<the-menu-item-id-created-for-blog-in-step-2>
+for CAT_ID in <cat-1> <cat-2>; do
+    curl -s -u $U:$P -X POST "$SITE/wp-json/wp/v2/menu-items" \
+        -H "Content-Type: application/json" \
+        -d "{\"menus\": $MENU_ID, \"type\": \"taxonomy\", \"object\": \"category\", \"object_id\": $CAT_ID, \"parent\": $BLOG_ITEM_ID}"
+done
+
+# 4. Assign menu to locations
+curl -s -u $U:$P -X PUT "$SITE/wp-json/wp/v2/menus/$MENU_ID" \
+    -H "Content-Type: application/json" \
+    -d '{"locations": ["primary", "mobile_menu", "footer_menu"]}'
+```
+
+### Post-add checklist for blog / CPT
+
+Whenever adding a blog or CPT to a site:
+
+- [ ] `page_for_posts` option points at a real page (Settings → Reading → "Posts page")
+- [ ] Menu exists and is assigned to at least `primary` location
+- [ ] Blog page (`page_for_posts`) appears in the menu OR menu has a "Blog" link pointing at it
+- [ ] Fetch a blog post URL directly and confirm header renders correctly (not `wp_page_menu` fallback)
+- [ ] If CPT: `has_archive => true` in CPT registration, and archive URL added to menu if visible in nav
+- [ ] Menu-locations survey after any theme change (theme swap resets location assignments)
+
+Failing any of these → theme-default templates for that content type render broken UI. Homepage looks fine because Canvas / Elementor build their own header; the fallback only surfaces where the theme controls the layout.

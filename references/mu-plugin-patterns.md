@@ -194,9 +194,94 @@ Conventions:
 
 ❌ **Using a mu-plugin when a filter would work** — filters are more discoverable + can be removed with `remove_filter()`. Only reach for mu-plugin patterns when filters fail (e.g. Closure suppression, force-override against a stubborn upstream).
 
+## Safe deploy pattern for `write-mu-plugin` — base64 round-trip + SIZE-MATCH
+
+`rankmath-mcp/write-mu-plugin` (and similar wrapper abilities that accept `content_base64`) is powerful — the agent can deploy a fresh mu-plugin file to `wp-content/mu-plugins/` in one call. But **mu-plugins auto-load on every request**, so a syntax error or truncated file = **site 500 site-wide**, instantly. When the model authors ~10-20KB of PHP + base64-encodes it, one wrong character in the transcription = broken file → outage.
+
+Governance: the wrapper's server-side validation catches the case where the file doesn't start with `<?php` (safe first-byte fail). But **middle-of-file corruption is not caught server-side** — you must verify locally before deploy + verify live immediately after.
+
+### 5-step safe deploy
+
+```bash
+# 1. Edit locally + PHP lint check
+$EDITOR wp-content/mu-plugins/<site>-entity-graph.php
+php -l wp-content/mu-plugins/<site>-entity-graph.php
+# → "No syntax errors detected" — MUST pass before any deploy
+```
+
+```bash
+# 2. Round-trip verify the base64 encoding
+#    (macOS base64 needs -i flag; -D means decode)
+B64=$(base64 -i wp-content/mu-plugins/<site>-entity-graph.php)
+echo "$B64" | base64 -D > /tmp/roundtrip.php
+diff -q wp-content/mu-plugins/<site>-entity-graph.php /tmp/roundtrip.php
+# → files identical — encoding OK to send
+# If diff shows any output → your local base64 tool is corrupting; try different tool
+```
+
+```bash
+# 3. Deploy via wrapper ability
+curl -X POST -H "Authorization: Basic $B64_AUTH" \
+  "$SITE/wp-json/rankmath-mcp/v1/write-mu-plugin" \
+  -H "Content-Type: application/json" \
+  -d "$(jq -n --arg n '<site>-entity-graph.php' \
+              --arg c "$B64" \
+              '{file_name: $n, content_base64: $c, overwrite: true}')"
+# → { "success": true, "size": 11010, "path": "..." }
+```
+
+```bash
+# 4. SIZE-MATCH check — response.size MUST equal wc -c of local file
+LOCAL_SIZE=$(wc -c < wp-content/mu-plugins/<site>-entity-graph.php)
+SERVER_SIZE=$(<response.size from step 3>)
+[ "$LOCAL_SIZE" = "$SERVER_SIZE" ] && echo "OK $LOCAL_SIZE" || echo "MISMATCH: local=$LOCAL_SIZE server=$SERVER_SIZE"
+# Mismatch = base64 transcription corruption during transmission → redeploy
+```
+
+```bash
+# 5. Verify LIVE immediately (before starting any other work)
+curl -sI "$SITE/" | head -1
+# → HTTP/2 200 — site is up
+
+# Check for PHP-error markers in response body
+curl -s "$SITE/" | grep -cE 'Fatal error|Parse error|Warning:.*mu-plugins'
+# → 0 — no PHP errors surfaced
+
+# Confirm the mu-plugin's actual effect is visible
+curl -s "$SITE/" | jq '.["@graph"][] | select(."@id" | endswith("#organization")) | .address'
+# → expected enriched value = mu-plugin ran successfully
+```
+
+### Why SIZE-MATCH is the transcription proof
+
+Base64 encoding is deterministic — decoding the exact bytes back always yields the exact original size. If `response.size != wc -c local` → the server received a different byte sequence than the local file. Almost always this is a transcription bug in the model's authored base64 string (dropped/duplicated `=` padding, whitespace injection, character substitution). Response reports the ACTUAL bytes written to disk — the mismatch flags the corruption immediately.
+
+### When wrapper validation catches errors
+
+Common `write-mu-plugin` server-side guards:
+
+| Guard | Behavior on fail | Catches |
+|---|---|---|
+| First bytes must be `<?php` | 400 error, no write | Missing opening tag / prepended junk (BOM, whitespace) |
+| Path traversal check (`../`) | 403 error | Attempts to write outside `mu-plugins/` |
+| Optional PHP lint if `php -l` available server-side | 400 with lint output | Syntax errors caught pre-write |
+
+If the wrapper doesn't lint server-side, step 1 (local `php -l`) is your only pre-deploy syntax gate.
+
+### Recovery when deploy breaks the site
+
+If step 5 shows 500 (site down):
+
+1. **Immediately** re-deploy an empty/valid stub via `write-mu-plugin` (`<?php // stubbed for emergency recovery`) — same file name, `overwrite:true` — restores site in one call.
+2. Fix the local file, re-run steps 1-5.
+3. If wrapper itself is broken (can't call `write-mu-plugin`) → fall back to cPanel Fileman `save_file_content` (see [`deployment.md`](deployment.md)) OR SSH `rm` the mu-plugin file.
+
+**Never leave a broken mu-plugin deployed** while debugging — every visitor gets 500 during the diagnosis window.
+
 ## Cross-references
 
 - [`references/astra-customizer.md`](astra-customizer.md) — concrete mu-plugin bridge for Astra Free + Elementor Theme Builder
 - [`references/pitfalls.md`](pitfalls.md) — when `remove_action()` failure is the symptom, this pattern is the fix
 - [`references/wp-abilities.md`](wp-abilities.md) — the `abilities-show-in-rest.php` mu-plugin uses the same reflection pattern in a different shape
 - [`references/security.md`](security.md) — mu-plugins run with full WordPress permissions — apply same review discipline as core
+- [`references/deployment.md`](deployment.md) — cPanel Fileman fallback when wrapper ability unavailable

@@ -215,10 +215,157 @@ Symptom: "Lighthouse cache policy audit fails (7 days)"
 └─ Add .htaccess Header directive (Trap 3) — override LSC default
 ```
 
+## Programmatic purge via `do_action('litespeed_purge_all')` — works from a mu-plugin
+
+**Updates prior note "REST purge fails, only deactivate→reactivate plugin works"** — that note applied specifically to LSC's own REST endpoint. The PHP action hook `do_action('litespeed_purge_all')` DOES work when fired from a mu-plugin (or any PHP context loaded after LSC init). This is the cleanest programmatic purge — no plugin toggle, no cache directory rm.
+
+### Pattern — 1-time purge on version bump
+
+```php
+<?php
+// wp-content/mu-plugins/<site>-purge-on-deploy.php
+add_action( 'init', function () {
+    $current_version = '2026-07-07-a';  // bump this string to re-fire on next deploy
+    $done_key        = '<site>_purge_marker';
+
+    if ( get_option( $done_key ) === $current_version ) return;  // already fired this version
+
+    if ( function_exists( 'do_action' ) ) {
+        do_action( 'litespeed_purge_all' );
+    }
+
+    update_option( $done_key, $current_version );
+}, 20 );  // priority 20 — after LSC hooks itself into init
+```
+
+**How it fires**:
+- First request after deploy → hook runs → `do_action` triggers LSC purge → option set to prevent re-fire
+- Subsequent requests → option matches → early return, no-op
+- To re-fire on next deploy → bump the version string in the constant → matches change → purge runs once more
+
+**Verify**:
+
+```bash
+# Fetch a known-cached URL WITHOUT cache-bust query
+curl -sI "$SITE/some-page/" | grep -i 'x-litespeed-cache'
+# → x-litespeed-cache: miss (was hit before, purge cleared it) — confirms purge worked
+
+# Confirm your intended change is visible
+curl -s "$SITE/some-page/" | grep -c 'new-cta-marker-string'
+# → 1 (or however many) — expected value present
+```
+
+### When to use each purge method
+
+| Method | Speed | Scope | Use when |
+|---|---|---|---|
+| `do_action('litespeed_purge_all')` from mu-plugin | Instant | Site-wide | Deploying a render-changing mu-plugin |
+| Wp-admin → LSC → Toolbox → Purge All | Instant | Site-wide | Human-driven, one-off |
+| `LiteSpeed_Cache_API::purge_post( $post_id )` in hook | Instant | Single post | Programmatic per-post after data write |
+| Deactivate → reactivate plugin | Slow | Full reset | Nuclear option when hooks not firing |
+| Delete `/wp-content/cache/litespeed/` via cPanel | Slow | Full reset | Last resort when plugin itself broken |
+
+The wp-admin UI + `do_action('litespeed_purge_all')` are equivalent — same action hook. Wrapper plugin-toggle recovery is only needed when LSC is in a broken state where its action hooks aren't firing.
+
+## JS Delay (NOT Defer) — analytics + form-tracking traps
+
+LiteSpeed's "JS Delay" optimization (LSC → Page Optimization → JS Settings → **Load JS Deferred: `Delayed`**) does something more aggressive than `defer`: it converts `<script type="text/javascript">` to `<script type="litespeed/javascript">` (browser ignores this type) — so the script does NOT execute until the FIRST USER INTERACTION (mousemove / scroll / touch / keypress with `isTrusted:true`).
+
+This breaks analytics + form-event tracking in three specific ways.
+
+### Trap 1 — inline listener scripts must opt out via `data-no-optimize="1"`
+
+Symptom: page fully loads, but `typeof gtag === 'undefined'` and `window.jQuery === undefined` for many seconds. Custom inline `<script>` that attaches `click` listeners for tracking → the listener isn't registered until AFTER the first user interaction. So the first click on a `tel:` link (usually the highest-value conversion) fires WITHOUT any listener attached → event lost forever.
+
+Fix: any inline `<script>` that registers analytics listeners must have `data-no-optimize="1"` (LSC skip flag). If Cloudflare Rocket Loader is also active, add `data-cfasync="false"` — Rocket Loader has its own delay behavior.
+
+```html
+<!-- ✅ RIGHT — script attaches listener at page parse time -->
+<script data-no-optimize="1" data-cfasync="false">
+(function() {
+    document.addEventListener('click', function(e) {
+        var link = e.target.closest('a[href^="tel:"]');
+        if (link) { /* fire analytics event */ }
+    }, true);  // capture phase — catch before any nested handlers
+})();
+</script>
+```
+
+Verify after deploy: view page source, confirm the script tag still has `type="text/javascript"` (not `type="litespeed/javascript"`). If LSC still delayed it → the opt-out flag isn't recognized → check LSC version / setting name.
+
+### Trap 2 — `dataLayer.push`, not `gtag()` direct
+
+When gtag.js is loaded async / delayed, calling `gtag(...)` before gtag.js finishes loading throws `gtag is not defined`. Correct pattern is to push to `window.dataLayer` — gtag.js reads the queue when it eventually initializes:
+
+```javascript
+// ❌ WRONG — throws if gtag.js not loaded yet
+gtag('event', 'click_zalo', { link_url: url });
+
+// ✅ RIGHT — always safe, queue processed on gtag.js init
+(window.dataLayer = window.dataLayer || []).push({
+    event: 'click_zalo',
+    link_url: url,
+});
+```
+
+Verified pattern: 3 events pushed to dataLayer BEFORE gtag.js loaded → all 3 sent to `/g/collect` with full parameters after gtag.js initialized. The queue survives.
+
+### Trap 3 — jQuery poll trap for form-submit events
+
+Elementor forms emit `submit_success`, Fluent Forms emits `fluentform_submission_success` — both are jQuery custom events. If your tracking script polls for `window.jQuery` availability with a short interval (e.g. 60 × 300ms = 18 seconds max), the poll can time out BEFORE jQuery loads (jQuery is JS-Delayed too, so it doesn't load until first user interaction).
+
+Real failure: user opens the form, sits still on page for 20+ seconds reading, then fills form and submits → jQuery only just loaded from the interaction → your poll timed out already → event listener never registered → form submission untracked.
+
+Fix: extend poll to ~10 minutes total, exit early when jQuery appears:
+
+```javascript
+var attempts = 0;
+var poll = setInterval(function () {
+    attempts++;
+    if (typeof window.jQuery !== 'undefined') {
+        clearInterval(poll);
+        window.jQuery(document).on('submit_success fluentform_submission_success', handler);
+        return;
+    }
+    if (attempts > 1200) {  // 1200 × 500ms = 10 minutes
+        clearInterval(poll);
+    }
+}, 500);
+```
+
+### Verifying analytics end-to-end without GA4 UI
+
+You don't need to log into GA4 to check tracking events are firing. Hook `window.fetch` + `navigator.sendBeacon` client-side, filter for GA4's `/g/collect` endpoint, and parse the body:
+
+```javascript
+// Paste into browser console AFTER page loads
+(function () {
+    var orig = window.fetch;
+    window.fetch = function (url, opts) {
+        if (typeof url === 'string' && url.includes('/g/collect')) {
+            console.log('[GA4 fetch]', url, opts && opts.body);
+        }
+        return orig.apply(this, arguments);
+    };
+    var origBeacon = navigator.sendBeacon.bind(navigator);
+    navigator.sendBeacon = function (url, data) {
+        if (url.includes('/g/collect')) {
+            console.log('[GA4 beacon]', url, data);
+        }
+        return origBeacon(url, data);
+    };
+})();
+```
+
+Then trigger events (click, form submit). Note: GA4 batches multiple events into a single request body separated by `\r\n` — parse each `\r\n`-separated line for `en=<event_name>` + `ep.*=<param>`. When gtm/gtag batches, only the first event's params appear in the URL — the rest are in the body.
+
+Test with a `dispatchEvent(new Event('click'))` from console — that event has `isTrusted:false`, LSC's JS Delay does NOT trigger on it. To fully test JS Delay-gated scripts, do a REAL mouse click / real scroll (`isTrusted:true` events only).
+
 ## Related skills
 
 - [`pitfalls.md`](../references/pitfalls.md) — PHP-FPM exhaustion, LSC behavior quirks
 - [`performance.md`](../references/performance.md) — Lighthouse cache policy + CWV
 - [`wp-abilities.md`](../references/wp-abilities.md) — REST namespace patterns
 - [`rankmath.md`](../references/rankmath.md) — Rank Math meta + LSC interaction
-- Insight source: weekly distillation 2026-05-13 (stale-read fix via `rest_post_dispatch` filter)
+- [`ga4-admin-api.md`](ga4-admin-api.md) — GA4 write via service account (needed for custom dimensions when Site Kit blocked)
+- Insight source: weekly distillation 2026-05-13 (stale-read fix via `rest_post_dispatch` filter); 2026-07-07 (programmatic purge via do_action); 2026-07-21 (JS Delay traps)

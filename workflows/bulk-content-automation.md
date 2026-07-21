@@ -363,10 +363,135 @@ Save to project's `audit/` folder:
 - `audit/bulk_log_{date}.json` — Stage 3 execution log
 - `audit/bulk_verify_{date}.md` — Stage 4 audit results
 
+## Content injection via mu-plugin `the_content` filter — DRY alternative to editing N posts
+
+**Problem shape**: you need to add the same content block (CTA button + "Related posts" grid + newsletter opt-in) to every existing blog post AND to every future blog post automatically. Naive approach = edit each of 24 posts via REST + remember to edit any new posts manually. Doesn't scale, easy to drift.
+
+**Better pattern**: 1 mu-plugin filter on `the_content` that appends the block at render time. Zero post edits. Auto-applies to new posts. Removable by deleting the mu-plugin file.
+
+### The filter — guarded to `is_singular('post')` only
+
+```php
+<?php
+// wp-content/mu-plugins/<site>-blog-enhance.php
+add_filter( 'the_content', function ( $content ) {
+    // Guard chain — only enhance single blog posts in main query
+    if ( ! is_singular( 'post' ) ) return $content;
+    if ( ! in_the_loop() ) return $content;
+    if ( ! is_main_query() ) return $content;
+
+    // CTA block
+    $cta = '<div class="blog-cta"><a href="/contact/" class="btn">Get a quote</a></div>';
+
+    // Related posts — 3 from same category, excluding current
+    $post_id = get_the_ID();
+    $cats    = wp_get_post_categories( $post_id );
+    $related = new WP_Query( [
+        'category__in'         => $cats,
+        'post__not_in'         => [ $post_id ],
+        'posts_per_page'       => 3,
+        'ignore_sticky_posts'  => true,
+        'no_found_rows'        => true,
+        'update_post_meta_cache' => false,
+        'update_post_term_cache' => false,
+    ] );
+
+    if ( $related->have_posts() ) {
+        $rel_html = '<div class="blog-related"><h3>Related</h3><ul>';
+        while ( $related->have_posts() ) {
+            $related->the_post();
+            $rel_html .= '<li><a href="' . get_permalink() . '">' . get_the_title() . '</a></li>';
+        }
+        $rel_html .= '</ul></div>';
+        wp_reset_postdata();
+    } else {
+        $rel_html = '';
+    }
+
+    return $content . $cta . $rel_html;
+}, 20 );
+```
+
+**Guard chain rationale**:
+- `is_singular('post')` — only blog posts, not pages / CPTs / archives
+- `in_the_loop()` — not in sidebar `WP_Query`, not in RSS feed loop
+- `is_main_query()` — not inside a Related Posts widget query calling `apply_filters('the_content', ...)` on an excerpt
+
+Skipping any of these → CTA appears in unexpected places (sidebar widgets, RSS emails, category description outputs, everywhere `the_content` fires).
+
+### Homepage blog section — `wp_footer` JS injection for Canvas pages
+
+Homepage on Canvas templates doesn't render posts. Inject a "Latest from blog" section via footer JS:
+
+```php
+add_action( 'wp_footer', function () {
+    if ( ! is_front_page() ) return;
+
+    $latest = new WP_Query( [
+        'post_type'      => 'post',
+        'posts_per_page' => 4,
+        'no_found_rows'  => true,
+    ] );
+    $items = [];
+    while ( $latest->have_posts() ) {
+        $latest->the_post();
+        $items[] = [
+            'title' => get_the_title(),
+            'url'   => get_permalink(),
+            'excerpt' => wp_trim_words( get_the_excerpt(), 20 ),
+            'thumb' => get_the_post_thumbnail_url( get_the_ID(), 'medium' ),
+        ];
+    }
+    wp_reset_postdata();
+
+    $json = wp_json_encode( $items );
+    ?>
+    <script>
+    (function () {
+        var items = <?php echo $json; ?>;
+        var anchor = document.querySelector('#cau-hoi');  // known section on homepage
+        if ( ! anchor || ! items.length ) return;
+
+        var html = '<section class="home-blog"><h2>Latest</h2><div class="grid">' +
+            items.map(function (i) {
+                return '<a href="' + i.url + '"><img src="' + i.thumb + '"><h4>' +
+                    i.title + '</h4><p>' + i.excerpt + '</p></a>';
+            }).join('') +
+            '</div></section>';
+
+        anchor.insertAdjacentHTML('afterend', html);
+    })();
+    </script>
+    <?php
+} );
+```
+
+Pattern: PHP builds data → JSON-encodes → JS inserts DOM after a known anchor selector (`#cau-hoi` here — replace with a stable anchor from the site's homepage Elementor data). Consistent with the "JS injection" style used by Canvas-template sites — see [`references/non-standard-stacks.md`](../references/non-standard-stacks.md) §"Editing `_elementor_data` when no Elementor MCP" for context on why Canvas pages often prefer JS injection over data mutation.
+
+### Why this beats editing N posts
+
+| Approach | 24 posts | Adding post #25 | Removing the CTA |
+|---|---|---|---|
+| Edit each post | 24 REST calls, ~5 min each | Remember to edit manually | 24 REST calls again |
+| `the_content` filter | 1 mu-plugin deploy | Auto-applies, zero effort | Delete 1 file |
+
+Add + remove is O(1) instead of O(N). Content drift impossible because there's ONE source (the filter). Reviewable via a single file diff.
+
+### Anti-patterns
+
+❌ **Skipping `is_main_query()` guard** → CTA appears in sidebar widget queries, category descriptions, RSS excerpts. The filter fires everywhere `the_content` is applied.
+
+❌ **Hardcoding related-post IDs** → new posts don't get auto-related; you're back to O(N) maintenance. Always query at render time.
+
+❌ **Using `the_content` for markup-heavy blocks with slow queries** → filter fires on every request; heavy `WP_Query` inside = TTFB regression. Cache the related-posts HTML with a transient (5-min TTL) if the site is high-traffic.
+
+❌ **Forgetting `wp_reset_postdata()` after `WP_Query`** → the outer loop's `get_the_ID()` / `get_permalink()` break for the rest of the page.
+
 ## Related skills
 
 - [`wp-abilities.md`](../references/wp-abilities.md) — REST API patterns
 - [`litespeed-cache-mgmt.md`](litespeed-cache-mgmt.md) — cache after bulk updates
 - [`seo-audit.md`](seo-audit.md) — when bulk fix SEO issues
 - [`pitfalls.md`](../references/pitfalls.md) — PHP-FPM exhaustion on rapid REST
-- Insight source: weekly distillation 2026-05-13 (idempotent marker pattern, ~70-post real test)
+- [`../references/mu-plugin-patterns.md`](../references/mu-plugin-patterns.md) — safe mu-plugin deploy + verification
+- Insight source: weekly distillation 2026-05-13 (idempotent marker pattern, ~70-post real test); 2026-07-07 (the_content filter beats N-post edit)

@@ -198,7 +198,7 @@ Some hosts strip dangerous endpoints. A typical shared host only exposes:
 - ✅ `list_files`, `get_file_content`, `save_file_content`, `mkdir`, `upload_files`
 - ❌ `delete_files`, `rename`, `move`, `empty_file`
 
-**Workarounds**:
+**Workarounds via UAPI-only** (when API2 is blocked too):
 - "Delete" a file = overwrite with a stub (`<?php // removed`)
 - "Rename" = read old → write new path → stub the old one
 - "Move" = same pattern
@@ -206,6 +206,47 @@ Some hosts strip dangerous endpoints. A typical shared host only exposes:
 Test endpoints before writing the deploy script:
 ```bash
 curl -H "$CP_AUTH" "$CP_URL/Fileman/<endpoint>?dir=&file=" | jq .errors
+```
+
+### Delete / trash / move via **API2** — different path, same auth
+
+Even when UAPI Fileman strips `delete_files`, most cPanel hosts still expose the **API2** `Fileman::fileop` endpoint — which does have `unlink`, `trash`, `copy`, `move`. Same token auth, different URL path:
+
+```bash
+# UAPI (v3 — modern) — read / write / list
+curl -H "$CP_AUTH" "$CP_URL/execute/Fileman/save_file_content?..."
+# → module Fileman, functions list_files/get_file_content/save_file_content/mkdir/upload_files
+
+# API2 (legacy — still widely available) — delete / trash / move
+curl -H "$CP_AUTH" \
+  "$CP_URL/json-api/cpanel?cpanel_jsonapi_apiversion=2&cpanel_jsonapi_module=Fileman&cpanel_jsonapi_func=fileop&op=unlink&sourcefiles=/home/user/site/rogue.php"
+# → { "cpanelresult": { "data": [ { "result": 1, "src": ".../rogue.php" } ] } }
+```
+
+**Ops available on API2 `Fileman::fileop`**:
+
+| `op=` | Params | Behavior |
+|---|---|---|
+| `unlink` | `sourcefiles=<abspath>` | Delete file permanently |
+| `trash` | `sourcefiles=<abspath>` | Move to cPanel `.trash/` folder (recoverable) |
+| `copy` | `sourcefiles=<abspath>`, `destfiles=<abspath>` | Copy to destination |
+| `move` | `sourcefiles=<abspath>`, `destfiles=<abspath>` | Rename or move |
+
+Multiple files: separate `sourcefiles` values with pipe `|` (URL-encoded).
+
+**Failure to know API2 exists** → wasteful UAPI workaround (stub-file "deletion" leaves dead files everywhere). Try API2 first for delete/trash/move; fall back to stub-overwrite only when API2 also 403s.
+
+**Detection**:
+
+```bash
+# UAPI probe
+curl -H "$CP_AUTH" "$CP_URL/execute/Fileman/fileop?op=unlink&sourcefiles=/tmp/test.txt" | jq .errors
+# → "could not find function fileop in module Fileman" = confirms UAPI doesn't have it
+
+# API2 probe (same op)
+curl -H "$CP_AUTH" "$CP_URL/json-api/cpanel?cpanel_jsonapi_apiversion=2&cpanel_jsonapi_module=Fileman&cpanel_jsonapi_func=fileop&op=unlink&sourcefiles=/tmp/nonexistent"
+# → { "cpanelresult": { "data": [ { "result": 0, "reason": "No such file..." } ] } }
+# = API2 endpoint alive, just the target doesn't exist — this is a WORKING endpoint
 ```
 
 ## Docker `php.ini` bind-mount for upload size

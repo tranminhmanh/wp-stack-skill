@@ -511,6 +511,66 @@ For YMYL sites (health, finance, legal), thin-content archive bloat = site-wide 
 
 UNIVERSAL — applies to any WP + Rank Math site. Filter pattern works for `is_tag()`, `is_author()`, `is_date()`, `is_search()`, `is_404()`, `is_post_type_archive()`. When taxonomy/archive robots options don't reflect at frontend, the filter is the escape hatch.
 
+## 13. `update-meta` raw `meta` map silently drops non-`rank_math_*` keys
+
+`rankmath-mcp/update-meta` accepts a `meta` param that looks like a generic post-meta writer (`meta: {"any_key": "value"}`) — but its internal helper `rmcp_meta_write()` **filters keys by `rank_math_` prefix** before calling `update_post_meta`. Any key without that prefix is silently dropped. The response gives no visible error — `success:true`, `message: "Meta updated"`, but `updated: []` (empty array).
+
+### The trap
+
+```bash
+# Try to set attachment alt text via update-meta
+curl -X POST -H "Authorization: Basic $B64" \
+  "$SITE/wp-json/rankmath-mcp/v1/update-meta" \
+  -d '{"id": 6608, "meta": {"_wp_attachment_image_alt": "Company logo — Site name"}}'
+
+# Response — LOOKS successful
+# {
+#   "success": true,
+#   "message": "Meta updated",
+#   "updated": []        ← RED FLAG — nothing was actually written
+# }
+
+# Verify live — alt still empty
+curl -s "$SITE/wp-content/uploads/logo.png" -o /dev/null -w '%{http_code}\n'
+curl -s "$SITE/" | grep -oE '<img[^>]+logo[^>]+alt="[^"]*"'
+# → alt="" — nothing changed
+```
+
+**Root cause**: helper source snippet:
+
+```php
+function rmcp_meta_write( $post_id, $meta_map ) {
+    $updated = [];
+    foreach ( $meta_map as $key => $value ) {
+        if ( strpos( $key, 'rank_math_' ) !== 0 ) continue;  // silent skip
+        update_post_meta( $post_id, $key, $value );
+        $updated[] = $key;
+    }
+    return $updated;
+}
+```
+
+`success:true` + `message:"Meta updated"` reflect that the API call itself didn't error — the boolean is not truthful about whether YOUR keys were written. The `updated: []` array is the actual receipt.
+
+### The right approach — use dedicated abilities per meta domain
+
+| Meta key | Use ability | Reason |
+|---|---|---|
+| `rank_math_*` (SEO meta) | `rankmath-mcp/update-meta` | Prefix-whitelisted, works correctly |
+| `_wp_attachment_image_alt` | `mcp-wp/edit-media {attachment_id, alt_text}` | Dedicated ability writes to correct meta key |
+| `_thumbnail_id` (featured image) | `mcp-wp/edit-post {featured_media}` | Uses `wp/v2/posts/{id}` REST endpoint |
+| Any other post meta | `mcp-wp/update-post-meta {post_id, meta_key, meta_value}` (if wrapper exposes it) OR direct REST `PATCH /wp/v2/posts/{id}` with `meta:{}` when the meta key is `show_in_rest:true` |
+
+### Verify-before-trust rule for MCP writes
+
+Whenever a write ability returns success but you can't confirm the effect visible on the site:
+
+1. **Check the `updated` / `changes` / `patched` array in the response** (whatever the wrapper convention names it — see §11)
+2. If empty or missing your keys → **do NOT trust `message` / `success`** — treat as no-op
+3. **Verify live**: fetch the frontend / REST endpoint and confirm the change is visible
+
+Never assume "success" means "your data landed" until you've verified independently.
+
 ## Liên quan
 
 - [`wp-abilities.md`](wp-abilities.md) — REST direct execution pattern
@@ -518,4 +578,4 @@ UNIVERSAL — applies to any WP + Rank Math site. Filter pattern works for `is_t
 - [`workflows/litespeed-cache-mgmt.md`](../workflows/litespeed-cache-mgmt.md) — WP-Abilities REST cache bust
 - [`workflows/build-mcp-wrapper-plugin.md`](../workflows/build-mcp-wrapper-plugin.md) — wrap Rank Math REST as MCP abilities
 - [`mu-plugin-patterns.md`](mu-plugin-patterns.md) — bridge/polyfill/force-option patterns for MU-plugins
-- Insight sources: weekly distillation 2026-05-13 (lazy compute, redirect override, response keys); 2026-05-23 (taxonomy option escape hatch)
+- Insight sources: weekly distillation 2026-05-13 (lazy compute, redirect override, response keys); 2026-05-23 (taxonomy option escape hatch); 2026-06-18 (update-meta silent drop)
