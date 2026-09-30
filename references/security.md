@@ -74,8 +74,8 @@ chown -R <php-user>:<php-user> wp-content/uploads
 3. Wordfence full scan
 4. Rotate ALL passwords (DB, admin, app password, FTP)
 5. Update WP core + theme + plugins to latest
-6. Audit user list, delete unknown users
-7. Audit installed plugins, delete unknown ones
+6. Audit user list, delete unknown users — compare `SELECT COUNT(*) FROM wp_users` with the admin UI / REST count; malware can hide accounts (see forensic #2 below)
+7. Audit installed plugins **and `mu-plugins/`**, delete unknown ones — if a plugin refuses to deactivate, use the two-phase `muplugins_loaded` removal (forensic #2)
 8. Check `.htaccess`, `wp-config` for injected code
 
 ## VPS-level: fail2ban whitelist override
@@ -203,3 +203,52 @@ Track backlog reduction: GSC → Pages → Not indexed → Not found (404) → s
 UNIVERSAL — pattern applies to any hacked WP site emitting rogue sitemaps or shell-shell backdoors. Adapt the URL patterns to what the specific site's spam looks like. The forensic ladder (probe → GB UA test → sitemap fetch → cPanel scan) doesn't change.
 
 Cross-references: [`deployment.md`](deployment.md) §"Shared host WAF (e.g. Imunify360)" — WAF quarantine behavior; [`mu-plugin-patterns.md`](mu-plugin-patterns.md) — how injected backdoors load.
+
+## WordPress hack forensic #2 — blockchain-hosted JS loader + hidden admin via fake plugins
+
+**Symptom**: a large obfuscated inline script (javascript-obfuscator style: `_0x…` identifiers, RC4-encoded string arrays) appears on frontend pages — sometimes twice per page, adding ~100KB — and can disappear an hour later without anyone touching the site. `wp-content/plugins/` contains plugins you never installed, named like real ones with a numeric suffix (`<legit-plugin-name>-177/`, `<plausible-name>-196/`). There may be an administrator you cannot see in *Users*.
+
+### How the pieces fit (observed on a WooCommerce site, 2026-08)
+
+| Component | Behaviour |
+|---|---|
+| **Loader plugin** (fake "link checker") | Enqueues a small JS on every frontend page. The JS POSTs to `admin-ajax.php` with a `wp_ajax_nopriv_*` action. PHP performs an `eth_call` JSON-RPC against public **BSC testnet** RPC endpoints, ABI-decodes the returned string (= JavaScript) and sends it back; the loader injects it with `createElement('script')`. The command-and-control lives in a smart contract ("EtherHiding"): there is no domain to block or take down, and the attacker swaps the payload by writing to the contract — which is why the injection appears and disappears remotely. |
+| **Persistence plugin** (fake "integrity/security" plugin) | Creates an admin account (observed login `sys_maint`, `@localhost.local` email; credentials stored as hex constants so grep for the plain strings misses them). Hides it from the Users screen (injects into `pre_user_query` / `query_where`) and from REST user listings. Blocks its own removal: `wp_die()` on deactivate/delete, strips the row action links, shows a "Protected" label. |
+| **Decoy directories** | Plugin folders whose main file is 0 bytes — noise to slow down review. |
+
+### Detection checklist
+
+```sql
+-- 1. Hidden users: DB count vs what WordPress shows
+SELECT COUNT(*) FROM wp_users;          -- compare with /wp-json/wp/v2/users?context=edit&per_page=100 (admin auth)
+SELECT ID, user_login, user_registered FROM wp_users ORDER BY user_registered DESC LIMIT 10;
+-- A mismatch means a filter is hiding users. user_registered of the hidden admin = earliest known compromise date.
+```
+
+- **`active_plugins` vs the plugins directory** — names with random numeric suffixes, folders whose files share one recent mtime, 0-byte main files.
+- **Anonymous frontend fetch** (logged out, cache-busted) — grep for `eth_call`, the loader filename, `_0x` density, unusually large inline `<script>`.
+- **The AJAX action itself** — `curl -d 'action=<suspect>' $SITE/wp-admin/admin-ajax.php` while logged out: returning JavaScript = live loader.
+- **Attribute hook callbacks to files** — iterate `$wp_filter['init']->callbacks` (and `wp_head`, `wp_footer`, `pre_user_query`), resolve each with `ReflectionFunction` / `ReflectionMethod` → `getFileName()`. The fastest way to prove which file does what (same reflection technique as [`mu-plugin-patterns.md`](mu-plugin-patterns.md) Pattern 1).
+- **Full filesystem scan without truncation** — sites with 100k+ files: make sure the scanner reports how many files it read; a silently truncated scan reports "clean".
+
+### Removal — two-phase MU-plugin
+
+The UI route is blocked by the malware itself, and regular plugins cannot be trusted to remove each other. MU-plugins load **before** regular plugins, which gives you a window the malware can't defend:
+
+1. **Phase 1 — hook `muplugins_loaded`**: remove the malicious entries from the `active_plugins` option. On the next request WordPress never includes them, so their self-protection never runs.
+2. **Phase 2 — hook `init`, on a later request**: delete the plugin directories; delete the hidden user(s) (reassign their content); delete the malware's options and usermeta; reset `default_role` to `subscriber` and check `users_can_register`; destroy every session (`WP_Session_Tokens::destroy_all_for_all_users()`); purge page cache.
+
+**Same-request resurrection trap**: in the request where you delete things, the malware may already be loaded (it was included before your option change could matter). Its `init` callback at a later priority then **re-creates the hidden admin with a new ID**. That is one leftover execution, not a second backdoor. Deploy a temporary watchdog MU-plugin that deletes the account if it reappears and logs each kill; expect **exactly one** kill, then silence across many requests. Remove the watchdog after credentials are rotated.
+
+Keep every forensic / cleanup route read-only by default (`apply=0`), gated on `manage_options`, and delete these MU-plugins when finished — they are powerful endpoints.
+
+### After cleanup — the part automation cannot do
+
+- Rotate **all** credentials: admin passwords, **Application Passwords** (then update every MCP connector config that embeds them, or the connectors break), DB password, hosting / SFTP, and regenerate the salts in `wp-config.php`.
+- Check the workstation of whoever administers the site (infostealer / "paste this into Run" ClickFix lures are a common entry point).
+- An attacker who held admin for days could read everything: treat the database as exfiltrated — customer PII, order data, password hashes — and assess notification obligations for your jurisdiction.
+- Preserve evidence before cleaning: save one page HTML with the injected blob and the raw loader JS; note the timeline (hidden admin's `user_registered`, file mtimes).
+
+### Reusability
+
+UNIVERSAL — any WordPress site. The loader's C2 channel will vary (blockchain RPC today, something else tomorrow); the detection ladder (DB vs REST user count → `active_plugins` vs disk → anonymous frontend fetch → hook-to-file attribution) and the two-phase `muplugins_loaded` removal do not. Different vector from the rogue-sitemap case above — run both ladders on any hacked site.

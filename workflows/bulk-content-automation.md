@@ -468,6 +468,17 @@ add_action( 'wp_footer', function () {
 
 Pattern: PHP builds data → JSON-encodes → JS inserts DOM after a known anchor selector (`#cau-hoi` here — replace with a stable anchor from the site's homepage Elementor data). Consistent with the "JS injection" style used by Canvas-template sites — see [`references/non-standard-stacks.md`](../references/non-standard-stacks.md) §"Editing `_elementor_data` when no Elementor MCP" for context on why Canvas pages often prefer JS injection over data mutation.
 
+### Markup hygiene + WooCommerce product blocks (second site, 565 posts)
+
+The same filter pattern ran on a WooCommerce site to append a cross-sell block to every blog post. Four details decided whether it looked right:
+
+- **Stray `<p>` / `<br>` inside your block** → some theme or builder re-runs `wpautop` (or shortcode un-autop) *after* your priority. Move the filter late (`99`). Side effect: core's `do_shortcode` runs at priority 11, so any shortcode in HTML you append at 99 is **not** expanded — call `do_shortcode()` on it yourself.
+- **Use a `<div class="…">` for the block title, not `<h2>`/`<h3>`**. Table-of-contents plugins collect every heading in `the_content` output, so an appended "Related products" heading shows up in every post's TOC and breaks the post's heading outline.
+- **Render products by category, not by hard-coded IDs**, when the store hides out-of-stock items: `[products ids="…"]` renders a half-empty or empty grid as stock changes; `[products category="<slug>" limit="4" columns="4"]` always shows what is buyable now and recovers on restock. Guard the empty case: `if ( false === strpos( $grid, 'product' ) ) return $content;`.
+- **Classify posts to product clusters once, then fall back to keywords**: a curated `post_id → cluster` map (built once — a multi-agent pass over title + category + slug classified 628 posts) plus a keyword guesser for posts published later; a `none` cluster (jobs, announcements) means "append nothing".
+
+Ship it behind a preview gate: a constant (`const ACME_RP_LIVE = false;`) that limits rendering to admins or `?preview=1` until the block has been checked on a sample of posts, then flip to `true` and redeploy.
+
 ### Why this beats editing N posts
 
 | Approach | 24 posts | Adding post #25 | Removing the CTA |

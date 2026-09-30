@@ -888,7 +888,7 @@ Google's structured data policy ([sd-policies](https://developers.google.com/sea
 **Anti-pattern (real 2026-06-18 finding)**:
 
 ```
-Tab title:    "Tỷ lệ thành công IVF tại Mai Thanh?"
+Tab title:    "Tỷ lệ thành công IVF tại <Tên phòng khám>?"
 Tab content:  "40–60% trên chu kỳ..."
 ```
 
@@ -917,6 +917,8 @@ When editing FAQ content via `elementor-mcp/update-widget`, the `tabs` setting i
 
 If you send only the tab you want to fix → the OTHER tabs are DELETED. You must resend the **full `tabs` array** including untouched tabs, preserving each tab's `_id` field (Elementor's internal identifier — dropping it may cause rendering issues or template reference breaks).
 
+**Applies to every repeater control, not only `tabs`** — `icon_list`, slides, price-list items, testimonial-carousel slides, form fields. Real case: changing one number inside 2 of 5 `icon_list` items required sending all 5 items back, each with its `_id` **and its icon object** (`selected_icon: {value, library}` — both Font Awesome and uploaded-SVG icons) exactly as read. Send 2 items and you are left with 2; send items without the icon object and the icons disappear. Read → edit in place → send the full array → re-read and compare item count, `_id`s and icons.
+
 **Right pattern**:
 
 ```bash
@@ -941,3 +943,19 @@ curl -s "$SITE/page/" | jq '.["@graph"][] | select(."@type"=="FAQPage") | .mainE
 - Content-policy risk high enough that manual FAQPage curation > automatic emission
 
 To disable: `settings.faq_schema = "no"`.
+
+## Elementor 4.x optimized markup — `.elementor-widget-container` is gone (JS selectors die silently)
+
+**Symptom**: a JS injection (footer text, badge, tracking hook) that worked for years now does nothing — no console error, the element just never appears. `document.querySelectorAll('.elementor-widget-container, …').length` returns **0**.
+
+**Root cause**: Elementor's *Optimized Markup* (an experiment in late 3.x, active on the 4.x sites observed) drops the inner `.elementor-widget-container` wrapper that older markup had inside every widget. Selectors built on the old structure match nothing, and `querySelectorAll` returning an empty list is not an error. The same site can differ from its staging copy if the experiment state differs — check the live DOM, not your memory of Elementor markup.
+
+**Fix — anchor on content or stable attributes, not wrapper structure**:
+
+- Stable attributes that survived the change: the widget element's `data-id` and `data-widget_type`, and the `.elementor-element-<id>` class
+- Or anchor on the content itself — e.g. walk leaf elements to find the one containing `©` to locate the copyright line; that works on Canvas pages and theme templates alike
+
+**Before debugging any "silent" JS injection**: run the selector in the console and read `.length` first. Zero means the DOM changed under you — not that your logic is wrong.
+
+Related: [`pitfalls.md`](pitfalls.md) §"Self-reverting change" (runtime DOM rewriters), [`../workflows/ui-verification.md`](../workflows/ui-verification.md) §"Verification ladder".
+

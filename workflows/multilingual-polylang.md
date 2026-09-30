@@ -532,6 +532,44 @@ Submit `/sitemap-en.xml` to GSC alongside Rank Math's `/sitemap_index.xml`.
 
 ---
 
+## CRITICAL: Term lookups & writes in sync code (cron, CLI, REST importers) on a Polylang site
+
+A script that syncs external data into a CPT + custom taxonomy (schedules, listings, feeds) worked on the first run and slowly corrupted the taxonomy afterwards. Four traps, all silent:
+
+1. **`get_term_by()` is language-filtered — in CLI *and* on the front end.** With no language context (WP-CLI, cron, `php -r`) or for a term that has no language assigned, it returns `false`/`null` even though the term exists. A sync doing "look up by name → `wp_insert_term()` if missing" creates a **duplicate term on every run**; three cron runs a day wrecks the taxonomy within weeks. On the front end the same call made a badge render an empty name.
+2. **`get_terms( [ 'hide_empty' => false ] )` returns `[]` in the same situations** — don't use it to *verify* a sync either.
+3. **`wp_set_object_terms()` on a term with no language lets Polylang clone it** per run: slugs grow `…-vi`, `…-vi-vi`, …; one run produced 8 junk terms.
+4. **`pll_set_term_language()` fails silently when the taxonomy isn't registered as translatable** in Polylang settings — no error, no log. Read back with `pll_get_term_language()`.
+
+**Safe pattern**:
+
+```php
+// Lookup: query the tables directly — no language filter involved
+global $wpdb;
+$term_id = (int) $wpdb->get_var( $wpdb->prepare(
+    "SELECT t.term_id FROM {$wpdb->terms} t
+     JOIN {$wpdb->term_taxonomy} tt ON tt.term_id = t.term_id
+     WHERE tt.taxonomy = %s AND t.name = %s
+     ORDER BY tt.count DESC, t.term_id ASC LIMIT 1",
+    $taxonomy, $name
+) );
+
+// Write only when the assignment actually changes — untouched posts give Polylang nothing to clone
+$current = wp_get_object_terms( $post_id, $taxonomy, [ 'fields' => 'ids' ] );
+if ( $term_id && $current !== [ $term_id ] ) {
+    wp_set_object_terms( $post_id, [ $term_id ], $taxonomy );
+}
+
+// Rendering: wp_get_post_terms() returns full term objects (with ->name) — no second lookup via get_term_by()
+$terms = wp_get_post_terms( $post_id, $taxonomy );
+```
+
+Verify with SQL counts (`SELECT COUNT(*) … WHERE taxonomy = %s`) before and after several consecutive runs — the count must not move. After the fix: 18 terms stayed at 18 across repeated syncs.
+
+Also read the template / shortcode that displays the term before naming terms: if it hard-codes a prefix (`<span>XX-<?= $label ?></span>`), the term must be named without it (`Label`, not `XX-Label`) — follow the template, not the naming in old docs.
+
+**Rule of thumb**: avoid `get_term_by()` / `get_terms()` in any code path that runs on a Polylang site outside a normal front-end request — and don't trust them on the front end for terms that may lack a language.
+
 ## VI overwrite recovery procedure
 
 When the existing-detection bug overwrites a VI post with EN content, restore from backup using a temp database. Do NOT restore the entire production DB — too disruptive.

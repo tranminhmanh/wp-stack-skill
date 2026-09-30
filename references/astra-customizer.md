@@ -175,6 +175,22 @@ add_filter('astra_main_header_display', function ($display) {
 
 ⚠️ Before pushing the mu-plugin, grep the Elementor Pro source for the specific version to verify the method names exist — see [`security.md` "mu-plugin API check"](security.md).
 
+### When an Elementor Pro footer template is active, Astra's footer builder output is not rendered
+
+Adding a component in *Customize → Footer Builder* (menu, HTML, widget) on such a site has **no visible effect**: the Elementor template replaces the whole footer location, so Astra's footer rows never reach the DOM. Check before spending time there:
+
+```bash
+curl -s "$SITE/?cb=$(date +%s)" | grep -cE 'site-(above|primary|below)-footer-wrap|ast-below-footer'
+# 0 → Astra footer builder is not rendering; anything added there is invisible
+```
+
+**Choosing where to put a site-wide element (e.g. links to all category archives)** — in order of risk:
+
+1. **Nav menu** — highest layout risk. HTML can be perfect while the header breaks: in one Astra Pro header-builder setup, adding sub-menu items produced correct `<nav>` markup and a visibly broken header (parent item pushed above the header, an empty box beside it); it had to be reverted. Screenshot every header/menu change.
+2. **Astra footer builder** — only if the check above returns > 0.
+3. **Elementor footer template** — needs an Elementor-capable MCP connector (or REST access to its abilities).
+4. **MU-plugin on `wp_footer`** — full control, independent of both builders, removed by deleting one file. Verify on clean URLs (cache) and on phones (fixed bottom bars can cover it) — see [`../workflows/ui-verification.md`](../workflows/ui-verification.md) §"Verification ladder".
+
 ## Astra Pro vs Elementor Pro — feature overlap matrix
 
 The standard stack (see [`stack.md`](stack.md)) is **Astra Free + Elementor Pro**, NOT Astra Pro (overlapping features = redundant). But if you already have an Astra Pro license (sunk cost), keep Astra Pro for non-builder pages.

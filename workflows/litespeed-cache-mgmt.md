@@ -267,6 +267,44 @@ curl -s "$SITE/some-page/" | grep -c 'new-cta-marker-string'
 
 The wp-admin UI + `do_action('litespeed_purge_all')` are equivalent — same action hook. Wrapper plugin-toggle recovery is only needed when LSC is in a broken state where its action hooks aren't firing.
 
+## Verify render changes on the CLEAN URL — `?cb=` proves the code runs, not what visitors get
+
+A cache-busted request (`?cb=<ts>`, `?_t=`) is always generated fresh, so it tells you your MU-plugin / snippet / widget edit **executes**. It says nothing about the copy of the page LiteSpeed hands to visitors and Googlebot. After a site-wide render change (footer links, injected CTA, schema), the clean URL keeps serving the HTML generated **before** your file existed until that page is purged or expires. Real miss (2026-07): a footer block was present on `?cb=` for every page, absent on every clean URL with `x-litespeed-cache: hit` — "done" would have been reported while no visitor could see it.
+
+### Two-layer check (both layers required)
+
+```bash
+URL="$SITE/some-page/"   # no query string
+
+# Layer 1 — first clean request after the purge: must be a MISS and contain the change
+curl -sI "$URL" | grep -i 'x-litespeed-cache'          # → miss
+curl -s  "$URL" | grep -c 'your-marker-string'         # → ≥ 1
+
+# Layer 2 — second clean request: must be a HIT and STILL contain the change
+curl -sI "$URL" | grep -i 'x-litespeed-cache'          # → hit
+curl -s  "$URL" | grep -c 'your-marker-string'         # → ≥ 1  (the NEW cache entry holds the change)
+
+# Crawler view — same check with Googlebot's UA (and a mobile UA if mobile caching is separated)
+curl -s -A 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)' "$URL" | grep -c 'your-marker-string'
+```
+
+Layer 1 without layer 2 is not done: it proves the purge happened, not that the cache refilled with the new markup.
+
+Make the purge part of the deploy: embed the one-time purge guard from §"Programmatic purge" in the same MU-plugin and bump its flag name (`_v1` → `_v2`) on every edit, so any request after deploy refreshes the cache without wp-admin.
+
+### Diagnostic / readback endpoints get cached too
+
+A token-guarded snippet or MU-plugin route that echoes data (file readback, scan results) can be answered from page cache on the first call — you receive the cached HTML page instead of your output and assume the code is broken. In the handler, before echoing:
+
+```php
+while ( ob_get_level() ) { ob_end_clean(); }             // drop theme/plugin output buffers
+header( 'X-LiteSpeed-Cache-Control: no-cache' );         // tell LSCache not to store/serve this response
+nocache_headers();
+do_action( 'litespeed_control_set_nocache', 'diagnostic endpoint' );
+```
+
+REST routes are not automatically safe: LSCache can cache REST `GET` responses too (see Trap 1) — send the headers above on every diagnostic route, whatever its URL shape.
+
 ## JS Delay (NOT Defer) — analytics + form-tracking traps
 
 LiteSpeed's "JS Delay" optimization (LSC → Page Optimization → JS Settings → **Load JS Deferred: `Delayed`**) does something more aggressive than `defer`: it converts `<script type="text/javascript">` to `<script type="litespeed/javascript">` (browser ignores this type) — so the script does NOT execute until the FIRST USER INTERACTION (mousemove / scroll / touch / keypress with `isTrusted:true`).
@@ -295,20 +333,20 @@ Verify after deploy: view page source, confirm the script tag still has `type="t
 
 ### Trap 2 — `dataLayer.push`, not `gtag()` direct
 
-When gtag.js is loaded async / delayed, calling `gtag(...)` before gtag.js finishes loading throws `gtag is not defined`. Correct pattern is to push to `window.dataLayer` — gtag.js reads the queue when it eventually initializes:
+When gtag.js is loaded async / delayed, calling `gtag(...)` before gtag.js finishes loading throws `gtag is not defined`. Correct pattern is to push to `window.dataLayer` **with the same signature the official `gtag()` stub uses — the `Arguments` object** — gtag.js replays the queue when it eventually initializes:
 
 ```javascript
 // ❌ WRONG — throws if gtag.js not loaded yet
 gtag('event', 'click_zalo', { link_url: url });
 
 // ✅ RIGHT — always safe, queue processed on gtag.js init
-(window.dataLayer = window.dataLayer || []).push({
-    event: 'click_zalo',
-    link_url: url,
-});
+function acmeTrack() { (window.dataLayer = window.dataLayer || []).push(arguments); }
+acmeTrack('event', 'click_zalo', { link_url: url });
 ```
 
-Verified pattern: 3 events pushed to dataLayer BEFORE gtag.js loaded → all 3 sent to `/g/collect` with full parameters after gtag.js initialized. The queue survives.
+Verified pattern: 3 events pushed this way BEFORE gtag.js loaded → all 3 sent to `/g/collect` with full parameters after gtag.js initialized. The queue survives. Name the helper anything except `gtag` — a global `gtag` you declare would overwrite the one Site Kit (or your tag snippet) installs.
+
+> ⚠️ **Correction (v0.12.0)** — v0.11.0 showed ~~`(window.dataLayer = window.dataLayer || []).push({ event: 'click_zalo', link_url: url })`~~ as the RIGHT pattern. That is a GTM-style object push: on a gtag-only setup (no GTM container tags) it updates the data layer but **sends no GA4 event**. The production-verified plugin behind this section pushes the `Arguments` object, as above. Arrays (`push(['event', …])`) are not a safe substitute either.
 
 ### Trap 3 — jQuery poll trap for form-submit events
 

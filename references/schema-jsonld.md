@@ -293,12 +293,12 @@ add_filter( 'rank_math/json_ld', function ( $data, $jsonld ) {
 // ❌ WRONG — sub-object with @id becomes a node definition → collision
 'contactPoint' => [
     '@type'     => 'ContactPoint',
-    '@id'       => '/lien-he/#contactpoint-q11',   // ← this makes it a node
+    '@id'       => '/lien-he/#contactpoint-branch1',   // ← this makes it a node
     'telephone' => '+xx-xxx-xxx-xxxx',
 ],
 ```
 
-The sub-object with `@id` is treated by the JSON-LD spec (and Google's parser) as a **node definition** in the graph. If a page's other widget (or a custom emit on `/lien-he/`) also defines `#contactpoint-q11`, you get **2 node definitions with same @id** on that page — duplicate error.
+The sub-object with `@id` is treated by the JSON-LD spec (and Google's parser) as a **node definition** in the graph. If a page's other widget (or a custom emit on `/lien-he/`) also defines `#contactpoint-branch1`, you get **2 node definitions with same @id** on that page — duplicate error.
 
 **Rule**: sub-object embedded in a property (`contactPoint` / `address` / `geo` / `hoursAvailable`) should carry `@id` **ONLY** when it is a canonical node defined ONCE and referenced from elsewhere via `{"@id": "..."}`. If it's just a value of the property → inline value object WITHOUT `@id`:
 
@@ -351,9 +351,65 @@ curl -s "$SITE/" | jq '.["@graph"][] | select(."@id" | endswith("#organization")
 
 Cross-references: [`elementor-mcp.md`](elementor-mcp.md) `find-element` — locate widgets emitting JSON-LD; [`rankmath.md`](rankmath.md) §"Wrapper plugin response conventions" — `write-mu-plugin` deploy path.
 
+## WooCommerce + Rank Math — the `Product` node is Rank Math's, and the shop page is an archive
+
+### Enrich `Product` inside `rank_math/json_ld`, not in WooCommerce's filter
+
+With Rank Math active on a WooCommerce site, the `Product` node you see in the page source is emitted by **Rank Math** (inside its `@graph`, `class="rank-math-schema…"` script), not by WooCommerce core. So `woocommerce_structured_data_product` — the filter every tutorial points to — changes nothing visible. Enrich the node where it is actually built:
+
+```php
+add_filter( 'rank_math/json_ld', function ( $data ) {
+    if ( ! is_array( $data ) || ! is_singular( 'product' ) ) return $data;
+    foreach ( $data as $key => $piece ) {
+        if ( ! is_array( $piece ) || ! in_array( 'Product', (array) ( $piece['@type'] ?? [] ), true ) ) continue;
+
+        // brand — derived from real catalogue data (here: product category), never invented
+        $cats = wp_get_post_terms( get_the_ID(), 'product_cat', [ 'fields' => 'names' ] );
+        $data[ $key ]['brand'] = [ '@type' => 'Brand', 'name' => acme_brand_for_categories( $cats ) ];
+
+        // return policy on every Offer (Rank Math may emit a single Offer or a list)
+        $policy = [
+            '@type'                => 'MerchantReturnPolicy',
+            'applicableCountry'    => 'VN',
+            'returnPolicyCategory' => 'https://schema.org/MerchantReturnFiniteReturnWindow',
+            'merchantReturnDays'   => 1,
+            'returnFees'           => 'https://schema.org/ReturnFeesCustomerResponsibility',
+            'returnMethod'         => 'https://schema.org/ReturnByMail',
+        ];
+        if ( isset( $piece['offers']['@type'] ) ) {
+            $data[ $key ]['offers']['hasMerchantReturnPolicy'] = $policy;
+        } elseif ( ! empty( $piece['offers'] ) && is_array( $piece['offers'] ) ) {
+            foreach ( $piece['offers'] as $i => $offer ) {
+                $data[ $key ]['offers'][ $i ]['hasMerchantReturnPolicy'] = $policy;
+            }
+        }
+    }
+    return $data;
+}, 20 );
+```
+
+Only add fields you can back with real data — the policy values must match the store's actual return terms. Leave `review` / `aggregateRating` / `shippingDetails` out until there are real reviews and real shipping rates; fabricated values are a structured-data policy violation.
+
+### The shop page is a post-type archive — page-ID injectors never fire there
+
+The page assigned as *Shop* in WooCommerce settings renders as the `product` post-type archive: `is_shop()` is true, `is_page()` is false, and `get_queried_object_id()` does not return that page's ID. Any JSON-LD injector keyed on "page ID X" silently skips it. Target it with `is_shop()`:
+
+```php
+add_action( 'wp_head', function () {
+    if ( ! function_exists( 'is_shop' ) || ! is_shop() ) return;
+    echo '<script type="application/ld+json">' . wp_json_encode( acme_store_node() ) . '</script>';
+}, 30 );
+```
+
+The SEO title / description saved on the Shop *page* (Rank Math meta for that page ID) **is** still used on the archive — only per-page-ID code paths miss it. See [`rankmath.md`](rankmath.md) §8 for title precedence on the Shop page.
+
+### Duplicate nodes when you own the entity
+
+If an MU-plugin emits the canonical `Organization` / `Article` nodes, drop Rank Math's thinner copies by `@type` in the same filter at a late priority — pattern and caveats in [`rankmath.md`](rankmath.md) §14.
+
 ## Liên quan
 
 - [`rankmath.md`](rankmath.md) — Rank Math auto-emits Organization + WebSite — coexistence pattern
 - [`seo-checklist.md`](seo-checklist.md) — schema integration trong full SEO checklist
 - [`mu-plugin-patterns.md`](mu-plugin-patterns.md) — `write-mu-plugin` safe deploy + `rank_math/json_ld` filter as bridge pattern
-- Insight sources: weekly distillation 2026-05-13 (@id conflict resolution + Physician YMYL pattern); 2026-06-17 (graph consolidation methodology + sub-object @id collision + safe removal sequence)
+- Insight sources: weekly distillation 2026-05-13 (@id conflict resolution + Physician YMYL pattern); 2026-06-17 (graph consolidation methodology + sub-object @id collision + safe removal sequence); 2026-09-30 (WooCommerce Product node owned by Rank Math, shop archive `is_shop()`)

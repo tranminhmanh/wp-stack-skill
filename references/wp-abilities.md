@@ -679,6 +679,31 @@ If all 3 pass → site is healthy. wp-admin 302 is irrelevant to that determinat
 
 **Reusability**: universal for any post-fix verification with App Password tooling.
 
+## `mcp-wp/*` parameter traps — wrong names return `success: true` and write nothing
+
+The generic `mcp-wp` abilities accept unknown keys without complaint. A misnamed parameter is simply ignored, the call "succeeds", and nothing changes. Verified traps:
+
+| Ability | Wrong (ignored silently) | Right |
+|---|---|---|
+| `mcp-wp/create-menu-item` | `parent_id`, `menu_order` | Not supported at create time — create the item, then set hierarchy with `edit-menu-item` |
+| `mcp-wp/edit-menu-item` | `id`, `parent_id`, `menu_order` | `menu_item_id`, `parent_item_id`, `position` |
+| `mcp-wp/custom-rest-call` | body under `data` | body under **`body`** |
+| `mcp-wp/custom-rest-call` | nested objects inside `params` / `body` | Dropped on the way through — call the REST route directly (next paragraph) |
+| `mcp-wp/custom-rest-call` → `/wp/v2/widgets/{id}` | `instance.raw.content`, or `form_data` built from the widget's `rendered_form` | Neither persisted (200, text unchanged) — use a guarded one-shot MU-plugin on the `widget_block` option ([`mu-plugin-patterns.md`](mu-plugin-patterns.md) Pattern 6) |
+
+**Nested input without the proxy**: take the Application Password from the connector config (§"Extract auth credentials from `~/.claude.json`"), and call the route yourself. For a readonly ability (must be `GET`, see §"Method = function of `meta.annotations.readonly`") with nested input, use bracket notation in the query string — PHP's `parse_str` rebuilds the nested array server-side:
+
+```bash
+curl -s -u "$U:$P" -G "$SITE/wp-json/wp-abilities/v1/abilities/<namespace>/<ability>/run" \
+  --data-urlencode 'input[post_id]=123' \
+  --data-urlencode 'input[filter][type]=widget' \
+  --data-urlencode 'input[filter][name]=icon-list'
+```
+
+This is also the way to reach abilities of a plugin whose MCP connector isn't loaded in the session (e.g. a separate page-builder MCP endpoint) — the abilities are still callable over REST.
+
+**Rule**: before the first call of any ability in a session, read its schema (`mcp-adapter-get-ability-info {ability_name}`), and after every write read the state back (`get-menu`, the option, the rendered page). For menus and headers, also take a screenshot — correct HTML can still be a broken layout ([`../workflows/ui-verification.md`](../workflows/ui-verification.md) §"Verification ladder").
+
 ## Liên quan
 
 - [`mcp-architecture.md`](mcp-architecture.md) — vì sao endpoint MCP server tách biệt khỏi abilities registry

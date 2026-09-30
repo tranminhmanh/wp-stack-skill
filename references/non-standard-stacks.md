@@ -86,6 +86,19 @@ curl -u user:app_pw -X POST \
 
 **Boundary**: layout edits, page builder structure — direct user/owner via wp-admin UI.
 
+### Flatsome gotchas (verified on 2 sites, Flatsome 3.20.x)
+
+| Want | Doesn't work | Works |
+|---|---|---|
+| Alt text on images placed with `[ux_image id=…]`, `[ux_gallery ids=…]`, `[section bg=…]`, `[featured_box img=…]` | Editing the page content | These shortcodes render through `wp_get_attachment_image()`, which pulls the **attachment's** alt → `POST /wp/v2/media/{id} {"alt_text": "…"}` fixes every place the image is used. If it "doesn't render", you set it on the wrong attachment ID — read the ID from the shortcode in `content.raw` |
+| Alt on a raw `<img alt="">` typed inside a UX Builder HTML element | Setting attachment alt | Edit that element in UX Builder (it is plain HTML) |
+| An icon via `[ux_icon icon="…" color="…" size="…"]` inside content written over REST | The shortcode rendered nothing | Plain `<i class="<icon-class>" style="color:…;font-size:…px"></i>` |
+| Markdown (`##`, `**bold**`) in content posted over REST | Shown literally | Send raw HTML (`<h2>`, `<strong>`) |
+| `visibility="hide-for-medium"` on a `[section]` | Ignored | Inline `<style>@media (min-width:850px){#block-id{display:none}}</style>` |
+| `[row]` / `[col]` nested inside a `<div>` that itself sits inside a `[col]` | Inner `[/col]` leaks onto the page as text | Flexbox HTML (`<div style="display:flex;gap:…">`) with direct `<img>` tags instead of nested shortcodes |
+
+Alt-text audit rule on these sites: a Canva-default filename (`Untitled-…`, "Thiet-ke-chua-co-ten-…") says nothing about whether an image is decorative — many are real photos (events, awards, team). Look at each image before deciding; only true ornaments (dividers, frames, background shapes) keep an empty alt.
+
 ## WPBakery (Visual Composer) — shortcode-based
 
 **Site example**: (older sites, ~2018-2020 era)

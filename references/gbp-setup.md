@@ -60,13 +60,13 @@ Phục vụ [audience type] tại [service areas]. Có dịch vụ [generic serv
 ### Concrete example (compliant)
 
 ```
-Acme Foods là nhà sản xuất + bán buôn chả cá tươi truyền thống tại Vũng Tàu.
+Acme Foods là nhà sản xuất + bán buôn hải sản chế biến truyền thống tại <Tỉnh X>.
 
 Sản phẩm chế biến hàng ngày từ cá biển đánh bắt tươi, không chất bảo quản, không hàn the. Đóng gói chân không, bảo quản đông lạnh.
 
 Phục vụ nhà hàng, quán ăn, đại lý phân phối tại TP.HCM, Bình Dương, Đồng Nai. Có giao hàng tận nơi cho đơn hàng từ 5kg.
 
-Cơ sở được kiểm định ATTP định kỳ. Đặt tại Vũng Tàu — vùng nguyên liệu chính của Việt Nam.
+Cơ sở được kiểm định ATTP định kỳ. Đặt tại <Tỉnh X> — vùng nguyên liệu chính của Việt Nam.
 ```
 
 Note: no phone, no price, no promo words, no URL, no HTML. Reads as a description of the business identity.
@@ -74,7 +74,7 @@ Note: no phone, no price, no promo words, no URL, no HTML. Reads as a descriptio
 ### Concrete example (rejected — anti-pattern)
 
 ```
-🐟 Acme Foods — CHẢ CÁ NGON NHẤT VŨNG TÀU 🐟
+🐟 Acme Foods — HẢI SẢN CHẾ BIẾN NGON NHẤT <TỈNH X> 🐟
 Liên hệ ngay 0938 123 456 để được tư vấn MIỄN PHÍ!
 Giá chỉ từ 50.000đ/kg • Cam kết HOÀN TIỀN 100% nếu không hài lòng
 Website: https://example.com
@@ -102,8 +102,9 @@ The GBP category picker has Vietnamese localization with multiple entries that l
 | Nhà máy chế biến cá | Fish processing company | Industrial-scale fish processing |
 
 Picking the wrong one → Google matches the wrong local search queries:
-- "Wholesale food store" → matches "bán buôn chả cá", "mua sỉ thực phẩm", "nhà cung cấp B2B" ✓
-- "Direct retail store" → matches "chả cá lẻ", "mua chả cá tại Vũng Tàu" ✗ (B2C intent — wrong audience for a wholesaler)
+
+- "Wholesale food store" → matches "bán buôn hải sản chế biến", "mua sỉ thực phẩm", "nhà cung cấp B2B" ✓
+- "Direct retail store" → matches "hải sản chế biến bán lẻ", "mua hải sản chế biến tại <Tỉnh X>" ✗ (B2C intent — wrong audience for a wholesaler)
 
 ### Workaround — type ENGLISH keys in the autocomplete
 

@@ -111,6 +111,24 @@ wp cache flush
 → Alternatives: WP Migrate Pro UI, UpdraftPlus restore, Duplicator.
 → MCP via HTTP still works (only needs the REST API endpoint), but deploy / migrate has to go through the plugin UI.
 
+**"Manage SSH Keys" in cPanel ≠ SSH available.** Many shared hosts keep that menu (and let you install a public key) while the SSH daemon is blocked at server level for the plan. Probe before promising an SSH-based plan: `nc -z -w3 <host> 22` (plus the host's documented alternative port), and ask the host to enable it if needed. Workable without SSH: cPanel → Advanced → **Terminal** (web terminal — can drop the connection, keep commands short), cPanel UAPI / API2 Fileman (sections below), and one-shot MU-plugins for anything that must run as WordPress.
+
+## cPanel UAPI authentication — build `$CP_AUTH` correctly
+
+Every cPanel snippet below uses `-H "$CP_AUTH"` and `$CP_URL`. Construct them like this:
+
+```bash
+CP_URL="https://<server-hostname>:2083/execute"          # UAPI base
+CP_AUTH="Authorization: cpanel <cpanel_account_user>:<api_token>"
+curl -s -H "$CP_AUTH" "$CP_URL/Fileman/list_files?dir=public_html" | jq '.status'   # 1 = OK
+```
+
+- **The username is the cPanel *account* user, not the token's name.** When someone creates a token under *Security → Manage API Tokens* they type a label (e.g. `claude_sept`) — that label is display-only. Using it as the username returns a plain-text `Access denied` (no JSON, no error code) that looks exactly like a bad token. The account user is the segment in the home path (`/home/<user>/…`).
+- **Header scheme is `cpanel`, not Basic.** `curl -u user:token` answers with the HTML login page.
+- **A link shared from the browser** (`https://host:2083/cpsess1234567/frontend/jupiter/...`) contains a session token; strip everything after the port and use `/execute/` for UAPI (or `/json-api/cpanel?...` for API2 — see §"Delete / trash / move via API2"). The `cpsess` value is not needed with token auth.
+- **Some modules are simply not available on shared plans.** Seen on a CloudLinux host: `Mysql::get_databases` → "function not found", phpMyAdmin behind the panel → 403. There is no DB access through the panel API there — run SQL from inside WordPress instead (a guarded one-shot MU-plugin using `$wpdb`, see [`mu-plugin-patterns.md`](mu-plugin-patterns.md) Pattern 6).
+- **Emergency use**: when a broken MU-plugin takes the whole site (and therefore REST + MCP) down with HTTP 500, UAPI `Fileman/save_file_content` with the fixed file is the fastest way back — it doesn't depend on WordPress booting. Revoke the token when the incident is over.
+
 ## Verify docroot before deploying (addon domain)
 
 Shared hosting (cPanel / Hostinger / similar) — addon domains do NOT share the same docroot as the main domain. Example: main = `/home/user/public_html/`, addon `example.com` = `/home/user/example.com/`.
@@ -385,6 +403,27 @@ docker exec <db-container> mariadb-dump -u root -p"$RPWD" --skip-extended-insert
 
 When in doubt, check what the container has: `docker exec <db-container> which mariadb mysql 2>/dev/null`.
 
+## nginx: serve a sidecar app under a WordPress vhost (`/app/` → Node / Python)
+
+Typical case: a small API + embeddable widget (Node, SQLite) that WordPress pages include via `<script src="/app/embed.js">`, proxied on the same domain to avoid CORS.
+
+```nginx
+# ^~ is mandatory: without it, the vhost's regex asset rule wins for /app/*.js
+location ^~ /app/ {
+    proxy_pass http://127.0.0.1:8787/;   # trailing slash strips the /app/ prefix
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+```
+
+- **Regex locations beat plain prefix locations.** WordPress vhosts usually carry `location ~* \.(js|css|png|…)$ { … }` (static cache / proxy to the WP container). nginx checks regex locations after finding the longest prefix match and lets the regex win — so `/app/embed.js` goes to WordPress, 404s, and the widget silently never loads. `^~` on the prefix stops regex evaluation for that path.
+- **`proxy_pass` with a trailing `/` replaces the matched prefix**; without it the app receives `/app/api/...` and answers 404.
+- **Process manager without sudo**: `pm2 startup` needs root to write a systemd unit. As an unprivileged user, `pm2 save` + a user crontab line `@reboot /usr/bin/pm2 resurrect` gives the same boot persistence.
+- Native Node modules (e.g. `better-sqlite3`) usually install from **prebuilt binaries** on common Linux x64 + LTS Node — no compiler toolchain needed; if `npm i` starts compiling, check the Node version against the module's prebuilt matrix first.
+- The app's static handler may send long `Cache-Control` (e.g. `maxAge: '5m'`): after editing `embed.js`, test with a cache-buster before concluding the fix didn't work.
+- Verify in a real browser (count rendered rows), not by grepping for the container `<div>` — see [`../workflows/ui-verification.md`](../workflows/ui-verification.md) §"Verification ladder".
+
 ## Silent fatal debugging — plugin isolation chain
 
 When a site is 500 and `debug.log` is empty (PHP-FPM crashed before WP could write — see [`pitfalls.md`](pitfalls.md) "AZDIGI shared host PHP-FPM worker exhaustion"), use this chain to localize the bug:
@@ -592,7 +631,7 @@ This avoids the "create-new-file" pathway entirely.
 
 ## Imunify360 quarantines Vietnamese strings in PHP body — base64 GET workaround
 
-**Symptom**: a PHP probe with Vietnamese string literals (`"Bán buôn chả cá tươi"`) uploaded via `Fileman/save_file_content` saves successfully (mtime correct, file size right) but HTTP GET to the URL returns 404. The same probe without Vietnamese content runs fine.
+**Symptom**: a PHP probe with Vietnamese string literals (`"Bán buôn thực phẩm tươi"`) uploaded via `Fileman/save_file_content` saves successfully (mtime correct, file size right) but HTTP GET to the URL returns 404. The same probe without Vietnamese content runs fine.
 
 **Theory**: Imunify360 WAF has a rule that flags PHP files with mixed-encoding content (Vietnamese chars in `.php` source is a rare pattern). False-positive quarantine — file ends up in Imunify quarantine even though `Fileman/get_file_content` still returns the original content.
 
@@ -601,7 +640,7 @@ This avoids the "create-new-file" pathway entirely.
 Keep the PHP source 100% ASCII; pass Vietnamese strings as URL-encoded base64:
 
 ```bash
-TITLE_B64=$(printf "Bán buôn chả cá tươi" | base64 -w0)
+TITLE_B64=$(printf "Bán buôn thực phẩm tươi" | base64 -w0)
 curl "https://<site>/probe.php?token=TOK&t1=$TITLE_B64"
 ```
 

@@ -396,7 +396,7 @@ curl -u $U:$P "$SITE/wp-json/wp/v2/pages/123?context=edit&_fields=meta" | jq '.m
 
 ## Multi-surface fact-removal audit — rendered HTML is source of truth
 
-When you need to **remove or update a single fact** (phone number, email, address, business name, hours) site-wide, that fact can live in **up to 7 independent surfaces** — each requires its own surgical removal. Grep on the repo file tree is NOT sufficient because:
+When you need to **remove or update a single fact** (phone number, email, address, business name, hours) site-wide, that fact can live in **up to 9 independent surfaces** — each requires its own surgical removal. Grep on the repo file tree is NOT sufficient because:
 
 - mu-plugin runtime injections aren't in the page content
 - Code Snippets DB rows aren't on disk
@@ -408,7 +408,7 @@ When you need to **remove or update a single fact** (phone number, email, addres
 
 **Right approach**: render every page → grep rendered HTML → bucket findings by surface type → fix each bucket separately.
 
-### 7-surface inventory checklist
+### 9-surface inventory checklist (7 original + 2 found later)
 
 When auditing a removable fact (e.g. old phone number `+xx-xxx-xxx-xxxx` to be removed):
 
@@ -421,6 +421,8 @@ When auditing a removable fact (e.g. old phone number `+xx-xxx-xxx-xxxx` to be r
 | 5 | **Elementor page widgets** | Specific page's `_elementor_data` has the fact in a heading / button / HTML widget / icon-box | Fact appears only on pages where you put it explicitly | Get via Elementor MCP → edit widget settings → update — see [`../references/elementor-mcp.md`](../references/elementor-mcp.md) |
 | 6 | **CF7 form fields + messages** | Form 29 (or other Contact Form 7 form) has `tel*` field with placeholder, disclaimer text containing fact, OR `messages` array with fact in `mail_sent_ok` / `mail_sent_ng` / `validation_error` | Fact visible in form HTML on contact page, or appears in form submission emails | Edit form via wp-admin Contact → Edit Form → Form tab + Mail tab + Messages tab |
 | 7 | **Rank Math per-page meta** | Individual page's `rank_math_description` or `rank_math_title` carries the fact in marketing copy | Fact appears in `<meta name="description">` on specific pages only | `rankmath-mcp/update-meta` per page id, or RM admin UI |
+| 8 | **Media `alt_text`** | Attachment alt text (and caption) — Rank Math reuses it for `og:image:alt`, themes for `<img alt>` | Fact survives in `og:image:alt` / `<img alt>` after every page, post and snippet is clean | `POST /wp/v2/media/{id} {"alt_text": …}` or `mcp-wp/edit-media` |
+| 9 | **Runtime text normalizer** | JS in an MU-plugin / snippet that walks the DOM (`TreeWalker`) and replaces strings from a `MAP` after load | `curl` HTML and `document.body.innerText` disagree; JSON-LD keeps the source value (JS never touches it) | Edit the `MAP` / remove the entry, and write the canonical value at the source |
 
 ### Discovery workflow
 
@@ -458,6 +460,40 @@ done < /tmp/all-urls.txt > /tmp/fact-locations.txt
 
 ❌ **Editing one surface and skipping verification across all sample pages** — re-run the discovery grep across the 5+ sample pages (home / contact / about / blog post / product) after each surgical edit. Each surface fix needs independent verification.
 
+### Changing a fact at scale (not just removing it)
+
+Removal is the easy case — the target string is known. Changing a fact (prices, hours, years of experience, delivery terms) has three extra traps:
+
+1. **Inventory every variant before deciding anything.** The same claim can exist in many versions. Real case: a site stated its doctors' experience as "nearly 10", "over 12", "over 14", "15+", "over 15", "20+" and "over 20" years across 98 URLs — seven values for one claim. Fixing the one page someone noticed would have created an eighth inconsistency. Scan the whole site first (sitemap URLs → rendered HTML → regex for the claim's shape), tabulate value × page, then **ask the owner for the canonical value** — for YMYL facts (medical, legal, financial) never pick one yourself. Also scan structured data: `foundingDate`, `Physician` descriptions and similar may already hold the truth.
+2. **Anchor replacements on context, and list spelling variants first.** A policy change "delivery is next-day, no longer within 24h" must not touch "defective batches exchanged within 24h" — same token, opposite meaning. Anchor on the verb ("giao … trong 24h" → change; "đổi … trong 24h" → keep), and enumerate the variants before writing the rule ("trong 24h", "trong vòng 24h", "trong 24 giờ", "trong vòng 24 giờ"). One grep for the obvious spelling misses the rest.
+3. **For tiered prices, ask "which values still exist?" before "which tier becomes which?"** Moving from 3 tiers (78k / 75k / 69k) to 4 (89k / 78k / 75k / 69k): mapping by tier position (old tier 1 → new tier 1) would invalidate every derived number already written into 24 posts (cost per unit, ROI examples). The old prices all still existed — only their quantity bands moved. Shift the band labels, insert the new top row (scale its derived numbers by 89/78), and every pre-computed figure stays correct.
+
+Then run the 9-surface discovery again with the **old** values — not only the new ones — and record the verification date next to each figure in the project's content reference doc ([`content-reference.md`](content-reference.md)).
+
+### Documentation drift — re-verify business data first
+
+Project docs drift from production in three layers, each needing its own check:
+
+| Layer | Example | Verify with | Risk |
+|---|---|---|---|
+| State | "19 posts still in draft, images blocked" — actually all published with images | REST `?status=any&_fields=id,status,featured_media` | Wasted time |
+| Configuration | "15 plugins, 2 stdio MCP servers" — actually 20 plugins, 1 HTTP MCP | `/wp/v2/plugins`, the project's MCP config | Wrong fixes |
+| **Business data** | Prices, sample offers, VAT inclusion in the content reference doc | Rendered HTML **and** JSON-LD (`Offer` / `OfferCatalog`), compared with each other | **Wrong facts published to customers** |
+
+Re-verify the business-data layer first — every new piece of content is written from it.
+
+### Inherited-site leftovers in widgets
+
+Theme demo imports leave text in classic / block widgets: an "About us" blurb for a different industry, a phone number from another country, a demo email address. Some sit in sidebars that render on archives only; some sit in footer widget areas that are **not rendered at all** because a page-builder footer replaced the theme footer — latent until someone switches footers.
+
+```bash
+curl -s -u "$U:$P" "$SITE/wp-json/wp/v2/widgets?per_page=100" \
+  | jq -r '.[] | "\(.id)\t\(.sidebar)\t\(.instance.raw.content // .rendered | gsub("<[^>]+>"; "") | .[0:120])"'
+curl -s -u "$U:$P" "$SITE/wp-json/wp/v2/sidebars" | jq -r '.[] | "\(.id)\t\(.status)\t\(.widgets | length)"'
+```
+
+Review every widget, including those in inactive or unrendered areas. Rewriting them may need a one-shot MU-plugin (the REST widget endpoints can answer 200 without saving — see [`../references/pitfalls.md`](../references/pitfalls.md) §"Silent no-op writes"). When a replacement text would need a disputed fact (years, counts), leave the fact out rather than add another version of it.
+
 ### Reusability
 
-UNIVERSAL — pattern applies to ANY removable fact: phone, email, hotline, fax, address, business hours, license number, old domain name, old founder name, deprecated brand slogan. Same 7 surfaces, same discovery workflow. Apply for brand changes, person changes, contact migrations, deprecation campaigns.
+UNIVERSAL — pattern applies to ANY removable fact: phone, email, hotline, fax, address, business hours, license number, old domain name, old founder name, deprecated brand slogan. Same 9 surfaces, same discovery workflow. Apply for brand changes, person changes, contact migrations, deprecation campaigns.
