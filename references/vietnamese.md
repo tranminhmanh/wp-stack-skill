@@ -58,7 +58,7 @@ Length: 150–160 chars (Vietnamese is ~30% longer than English due to diacritic
 ```json
 {
   "@type": "LocalBusiness",
-  "name": "Bánh Mì Má Hải",
+  "name": "Bánh Mì Hoa Mai",
   "address": {
     "streetAddress": "123 Lê Lợi",
     "addressLocality": "Quận 1",
