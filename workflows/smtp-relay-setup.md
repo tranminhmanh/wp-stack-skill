@@ -147,8 +147,8 @@ Brevo gửi email đi tốt nhưng email phải tới được người nhận. 
 
 ```php
 // Phase 1 (Brevo only, no inbound MX):
-'email_to' => 'manh-personal@gmail.com',
-'reply_to_email' => 'manh-personal@gmail.com',
+'email_to' => 'owner.personal@gmail.com',
+'reply_to_email' => 'owner.personal@gmail.com',
 
 // Phase 2 (after Zoho/Workspace setup):
 'email_to' => 'sales@example.com',

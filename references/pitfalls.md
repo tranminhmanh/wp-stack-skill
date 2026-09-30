@@ -1973,3 +1973,74 @@ Full recipe: [`references/elementor-mcp.md`](elementor-mcp.md) "SVG upload block
 The `mask-image` data URI pattern is the only ergonomic + cacheable + color-themeable option on a SVG-blocked host.
 
 **Reusability**: any WordPress shared hosting with WAF SVG block.
+
+## Self-reverting change — something re-applies the old state on every request
+
+**Symptom**: you change a value (meta description, visible text, plugin state, post status), verify it, and later — or on the very next load — it is back to the old value. Purging cache doesn't help. Nothing in the edit history explains it.
+
+**Root cause**: a second writer on the site re-applies its own idea of the value on every request (or every sync run). Seen on 3 sites:
+
+| Writer | What it did | How it hid |
+|---|---|---|
+| Code Snippet, `scope=global`, hooked on `init` | `update_post_meta( <page>, 'rank_math_description', $old )` on every request — overwrote the meta a second after you saved it | Not in any file on disk; only visible in the snippet's `code` field |
+| MU-plugin named "…one-shot…" with **no run-once guard** | `deactivate_plugins( '<plugin>' )` on every `init` — the user activated the plugin, the next page load turned it off again | The filename promised one-shot; the code ran forever. Only the PHP error_log line repeating every request gave it away |
+| Runtime text normalizer (JS `TreeWalker` over `document.body` with a replacement `MAP`) | Rewrote "8h–20h" to "9h–17h" in the browser after load | `curl` showed your source text, the browser showed the normalized text — and JSON-LD (never walked) kept the source value, so schema and visible text now contradicted each other |
+| Existing sync endpoint for the same CPT (an MU-plugin REST route fed by an external workflow) | Matched posts by meta and forced `post_status = publish` — re-published posts you had just set to draft | A second, newer sync job was written without checking who else writes to that CPT |
+
+**Detection**:
+
+```bash
+# 1. Does it revert without anyone touching it? Save → wait → reload twice (clean URL) → compare.
+# 2. Grep every per-request writer for the thing you changed:
+curl -s -u "$U:$P" "$SITE/wp-json/code-snippets/v1/snippets" \
+  | jq -r '.[] | select(.active and .scope=="global") | "\(.id) \(.name)"'      # then grep .code for the meta key / plugin slug
+grep -nE "update_post_meta|update_option|deactivate_plugins|wp_update_post|TreeWalker|insertBefore" wp-content/mu-plugins/*.php
+# 3. For visible text: diff raw HTML vs rendered text
+curl -s "$SITE/page/" | grep -c '8h–20h'          # source value?
+# vs in the browser console: document.body.innerText.includes('8h–20h')
+# 4. Before writing ANY sync into a CPT: grep who already writes to it
+grep -rln "<cpt_slug>" wp-content/mu-plugins/ wp-content/plugins/*/ 2>/dev/null
+```
+
+**Fix**: change the value at its source (the snippet / MU-plugin / normalizer `MAP` / the other sync job), not in `postmeta` or the page. Give every "one-shot" file a real guard (see [`mu-plugin-patterns.md`](mu-plugin-patterns.md) Pattern 6). When a normalizer exists, read its `MAP` before writing NAP data so the source already holds the canonical value and the JSON-LD matches what visitors see.
+
+**Reusability**: UNIVERSAL — inherited sites collect per-request "fixers" (snippets, MU-plugins, JS normalizers, sync endpoints). Any value that "won't stick" is this until proven otherwise.
+
+## Silent no-op writes — `200` / `success: true` but nothing persisted (catalog)
+
+The write API answers success and the data doesn't change. Across 4 sites the same lesson repeated: **read back the field that is actually rendered — never trust the write response.**
+
+| Write | What happens | Read back / fix |
+|---|---|---|
+| WooCommerce `PUT /wc/v3/products/{id} {"regular_price":"89000"}` | 200, but the product still sells at the old price — an old `sale_price` (no dates, `on_sale: true`) overrides it | Read back `price` (the effective field), not `regular_price`. Clear the sale in the same call: `{"regular_price":"89000","sale_price":""}` |
+| Contact Form 7 REST update (form properties / messages) | 200, nothing saved | Save through PHP: `WPCF7_ContactForm::get_instance( $id )->set_properties( [...] ); ->save();` (one-shot MU-plugin or snippet) |
+| `rankmath-mcp/update-meta` with a raw `meta` map of non-`rank_math_*` keys | `success: true`, `updated: []` | See [`rankmath.md`](rankmath.md) §13 — use the dedicated ability |
+| `mcp-wp/create-menu-item` with `parent_id` / `menu_order` | Item created at top level, parent/order ignored | Create, then `edit-menu-item` with its own parameter names — see [`wp-abilities.md`](wp-abilities.md) §"`mcp-wp/*` parameter traps" |
+| `mcp-wp/custom-rest-call` with the body under `data`, or with nested objects | Body swallowed / nested objects dropped, still 200 | Body key is `body`; for nested input call the REST route directly — same section |
+| Widget edits (`/wp/v2/widgets`) through a generic REST-proxy ability | 200, widget text unchanged | Edit the `widget_block` option with a guarded one-shot MU-plugin (Pattern 6) |
+| Polylang `pll_set_term_language()` on a taxonomy not registered as translatable | No error, no effect | `pll_get_term_language()` to confirm — see [`../workflows/multilingual-polylang.md`](../workflows/multilingual-polylang.md) |
+| GA4 Admin API `PATCH` setting a boolean to `false` | Response omits the key entirely | Verify by key **absence** — see [`../workflows/woocommerce-ga4-ecommerce.md`](../workflows/woocommerce-ga4-ecommerce.md) Step 5 |
+
+**Rule**: after every write, fetch the effective state from the surface that matters (rendered HTML, the effective REST field, the option as WordPress reads it) and compare with what you intended. Before the first call of any MCP ability, read its schema (`mcp-adapter-get-ability-info`) — parameter names are where most silent no-ops come from.
+
+## Google for WooCommerce — `google/connected` is not a health check
+
+**Symptom**: the plugin's settings page renders its header and then spins forever. Every status endpoint says connected (Merchant Center ID, Ads ID, setup complete).
+
+**Root cause**: `GET /wp-json/wc/gla/google/connected` only checks that a token **exists** locally. It never calls Google. The spinner is a request that does call Google and fails.
+
+**Real health check**:
+
+```bash
+curl -s -u "$U:$P" "$SITE/wp-json/wc/gla/mc/contact-information"
+# 200 → working
+# 401 {"code":"GOOGLE_DISCONNECTED", "message":"Please reconnect your Google account"} → token revoked or access lost
+```
+
+**Fix**:
+
+1. Get a fresh OAuth URL without the spinning UI: `GET /wp-json/wc/gla/google/connect?next=reconnect` → open the returned URL in a browser as the Google account that manages the Merchant Center, approve.
+2. Still 401 after reconnecting? Check `GET /wp-json/wc/gla/mc/accounts` — if the Merchant Center account is missing from the list, that Google account **lost its user access in Merchant Center**. Re-grant it in Merchant Center (Settings → People and access); no plugin change needed.
+3. Ads works the same way: an empty `/wc/gla/ads/accounts` means that account has no Ads access.
+
+Related trap on the same site: an MU-plugin "cleanup" file kept deactivating this plugin on every request — see §"Self-reverting change" above.

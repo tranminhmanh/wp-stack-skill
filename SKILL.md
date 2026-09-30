@@ -100,8 +100,13 @@ Summary:
 | Site uses Flatsome / WPBakery / Bricks / non-standard builder | `references/non-standard-stacks.md` ⚠️ DON'T propose Elementor MCP tools |
 | Deploy rankmath-mcp wrapper plugin (4 distribution paths) | `workflows/deploy-rankmath-mcp-wrapper.md` |
 | Full-site SEO audit scoring /60 (multi-agent, crawl-once) | `workflows/full-site-seo-audit.md` |
-| GA4 write config (custom dimensions, key events) via service account | `workflows/ga4-admin-api.md` |
-| WordPress hack forensic (rogue sitemap / .htaccess injection) | `references/security.md` |
+| GA4 write config (custom dimensions, key events) + Search Console API via service account | `workflows/ga4-admin-api.md` |
+| WooCommerce × GA4 ecommerce (purchase gap, ÷100 on VND, server-side Measurement Protocol, junk `form_submit`) | `workflows/woocommerce-ga4-ecommerce.md` + `workflows/ga4-admin-api.md` |
+| WordPress hack forensic (rogue sitemap / .htaccess injection; hidden admin + blockchain JS loader via fake plugins) | `references/security.md` |
+| Redirect audit — rules masking live posts, loops, dead targets | `workflows/redirect-audit.md` + `references/rankmath.md` |
+| "Published but not indexed" triage (URL Inspection: discovery vs quality) | `workflows/full-site-seo-audit.md` Phase 5 + `workflows/ga4-admin-api.md` |
+| A change keeps reverting, or a write returns success but nothing changed | `references/pitfalls.md` §"Self-reverting change" + §"Silent no-op writes" |
+| Change a business fact site-wide (price, hours, years, NAP) | `workflows/comprehensive-audit.md` §"9-surface inventory" + §"Changing a fact at scale" |
 
 ## Anti-patterns — STRICTLY avoid
 

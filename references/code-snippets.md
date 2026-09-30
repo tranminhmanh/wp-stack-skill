@@ -31,7 +31,7 @@ curl -H "Authorization: Basic $B64" \
 # 2. Filter for snippets emitting og:image / favicon — patterns to clean up
 curl -H "Authorization: Basic $B64" \
   "$SITE/wp-json/code-snippets/v1/snippets" \
-  | jq '.[] | select(.code | test("og:image|twitter:image|favicon|logo-3fish"; "i")) | {id, name}'
+  | jq '.[] | select(.code | test("og:image|twitter:image|favicon|logo-legacy"; "i")) | {id, name}'
 
 # 3. Fetch full code of target snippet
 curl -H "Authorization: Basic $B64" \
@@ -168,6 +168,55 @@ Less reliable than the file-route — locale variations across shells / terminal
 - Pretty much any production snippet on a non-English locale site
 
 When in doubt: file-route. The 1 extra command is cheap; debugging silent truncation later is not.
+
+## Code Snippets as a PHP execution channel when file APIs are blocked
+
+Snippets are PHP evaluated from the database. When the usual file path is closed — cPanel Fileman answering `403 Access denied` all session (host WAF such as Imunify360), no SSH, MCP file abilities unavailable — a one-shot snippet created over this REST API can still do the file or data operation, **keeping the project's architecture intact** (deploy the MU-plugin the project expects instead of stuffing its logic into a snippet).
+
+```php
+// One-shot snippet: write an MU-plugin from a base64 payload (payload never contains raw Vietnamese / risky tokens)
+$dest = WPMU_PLUGIN_DIR . '/acme-feature.php';
+$new  = base64_decode( 'PD9waHAgLyoqIC4uLiAqLw==' );          // <?php /** ... */
+if ( strpos( $new, '<?php' ) !== 0 ) return;                    // sanity check
+if ( file_exists( $dest ) ) {
+    file_put_contents( $dest . '.bak-' . gmdate( 'YmdHis' ), file_get_contents( $dest ) );   // backup first
+}
+file_put_contents( $dest, $new );
+```
+
+The same channel reaches internals that REST can't write reliably:
+
+- `\Elementor\Plugin::$instance->documents->get( $id )->save( [ 'elements' => $arr ] )` — writes `_elementor_data` and regenerates post content + CSS
+- `WPCF7_ContactForm::get_instance( $id )` → `set_properties( [...] )` → `save()` — the CF7 REST update returns 200 without saving ([`pitfalls.md`](pitfalls.md) §"Silent no-op writes")
+- `update_post_meta()` for keys no REST route exposes
+
+**Discipline — this is a powerful door**:
+
+1. Base64 every payload that contains Vietnamese text or WAF-trigger words (see [`deployment.md`](deployment.md) §"Imunify360 quarantines Vietnamese strings").
+2. **Dry-run first**: have the snippet print `substr_count()` of each search string (and file size) and change nothing; switch to write mode only when every count is what you expect. A wrong replace in a 200KB file is not undoable without the `.bak`.
+3. Backup the target file / value before writing.
+4. Set the snippet to run once (`scope: single-use` / "Run once", or deactivate it immediately after: `POST …/snippets/<id> {"active": false}`), then delete it.
+
+## Reading a large server file back through a snippet — chunked base64
+
+When a file exists only on the server (a 200KB+ MU-plugin patched in place several times, no local copy) and neither SSH nor Fileman can read it, a token-guarded readback snippet can:
+
+```php
+// ?acme_read=<token>&from=0&len=60000
+if ( ( $_GET['acme_read'] ?? '' ) !== ACME_TOKEN ) return;
+while ( ob_get_level() ) { ob_end_clean(); }                   // theme/plugin buffers would wrap the output
+header( 'X-LiteSpeed-Cache-Control: no-cache' );               // otherwise the FIRST call returns a cached HTML page
+header( 'Content-Type: text/plain' );
+$c = file_get_contents( WPMU_PLUGIN_DIR . '/big-file.php' );
+echo strlen( $c ), "\n", base64_encode( substr( $c, (int) $_GET['from'], (int) $_GET['len'] ) );
+exit;
+```
+
+- **Base64 is mandatory** — raw echo gets altered by charset handling / page optimization.
+- Save **each chunk to its own file and decode each separately**, then concatenate the decoded bytes. Concatenating base64 strings first breaks at the `=` padding of each chunk.
+- Verify: server-reported `strlen` == size of the reassembled file, then `php -l`.
+- Without the output-buffer flush + no-cache header the first response is often the cached homepage HTML — easy to misread as "my snippet is broken" ([`../workflows/litespeed-cache-mgmt.md`](../workflows/litespeed-cache-mgmt.md) §"Diagnostic / readback endpoints get cached too").
+- Deactivate and delete the snippet afterwards; it can read any file PHP can.
 
 ## Cross-references
 

@@ -143,9 +143,59 @@ URL = https://example.com/page/?cb=$(date +%s%N)
 
 Cache-bust forces fresh render. Combined with `Cmd+Shift+R` browser hard-refresh after each MCP write op, you see what the user sees.
 
+## Verification ladder — HTTP 200 → markup present → rendered and behaving
+
+Each rung proves less than people assume. Across 4 sites the same near-miss happened: a check on a lower rung passed and "done" was almost reported.
+
+| Rung | What it proves | What it does NOT prove |
+|---|---|---|
+| 1. HTTP 200 | No fatal error | That anything you changed is there |
+| 2. Markup grep (`curl … \| grep`) | The server emits your HTML | That it renders correctly, that JS ran, that nothing later rewrote it, that content loaded by AJAX exists |
+| 3. Real browser: screenshot + console + counts | What a visitor actually gets | — (this is the bar for UI claims) |
+
+Real cases where rung 2 passed and rung 3 failed:
+
+| Change | Rung 2 said | Rung 3 showed |
+|---|---|---|
+| 5 sub-menu items added to a theme header builder menu | 5/5 links inside `<nav>` on 5/5 pages, correct `sub-menu` class | Parent item thrown above the header plus an empty white box — header broken; reverted |
+| Schedule widget embedded via script tag | The widget's container `<div>` present | Table empty until counted: `tbody tr` = 0 (asset path routed to the wrong upstream) |
+| One JS block removed from an injection MU-plugin | Page 200, target block gone | A different section vanished: `ReferenceError` in console — a later block used a variable the removed one declared |
+| Lead-form audit by crawling HTML | Only the inline forms found | A 700×800 popup form loaded via AJAX on desktop — invisible to curl, visible in the browser |
+
+**Rung-3 checklist** (in addition to the layout checklist above):
+
+```text
+[ ] Screenshot desktop + mobile width of the changed area
+[ ] Console: 0 new errors — in a FRESH tab (the console keeps errors from the previous load; stack traces still show the old ?cb= URL)
+[ ] Count what should exist: rows, cards, sections, links — compare with the source data, not with "looks fine"
+[ ] Diff raw HTML vs rendered text for the values you changed: `curl` shows the source, `document.body.innerText` shows what JS left — a mismatch means a runtime rewriter (see pitfalls §"Self-reverting change")
+[ ] Clean URL, not only ?cb= (see litespeed-cache-mgmt §"Verify render changes on the CLEAN URL")
+```
+
+### Fixed bottom bars cover footer-injected content on mobile
+
+Theme/plugin sticky bars (call / Zalo / navigation strips pinned to the bottom of the viewport) often exist only below a breakpoint and leave `body` without bottom padding. Anything you inject at the end of the page (`wp_footer` links, a copyright row) sits underneath on phones. Measure instead of guessing:
+
+```js
+// Gap between the last injected element and the fixed bar
+const bar  = document.querySelector('<fixed-bar-selector>');
+const last = document.querySelector('<your-block> :last-child');
+({ barHeight: bar?.getBoundingClientRect().height,
+   gapBelowLast: document.documentElement.scrollHeight - (last.getBoundingClientRect().bottom + scrollY) });
+
+// Read the bar's real breakpoint from the stylesheets instead of assuming 767px
+[...document.styleSheets].flatMap(ss => { try { return [...ss.cssRules]; } catch { return []; } })
+  .filter(r => r.type === CSSRule.MEDIA_RULE && r.cssText.includes('<fixed-bar-class>'))
+  .map(r => r.conditionText);
+```
+
+Then add bottom padding ≥ the bar height, scoped to the same media query the bar uses.
+
 ## Cross-references
 
 - [`references/responsive.md`](../references/responsive.md) — `[aria-hidden]` state-scoped CSS, iframe-based responsive testing pattern
 - [`references/pitfalls.md`](../references/pitfalls.md) — `_elementor_edit_mode` empty makes editor-vs-live diverge dangerously
 - [`references/elementor-mcp.md`](../references/elementor-mcp.md) "Verify pattern (REQUIRED after every write op)" — HTTP-level verify (no fatal)
 - [`workflows/redesign-page.md`](redesign-page.md) — verify after each phase 3 execution
+- [`litespeed-cache-mgmt.md`](litespeed-cache-mgmt.md) §"Verify render changes on the CLEAN URL" — cache layer of the same discipline
+- Insight source: weekly distillation 2026-09-30 (verification-ladder near-misses on 4 sites: header menu, embedded widget, JS block removal, AJAX popup; fixed-bar overlap)

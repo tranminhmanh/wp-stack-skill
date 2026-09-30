@@ -373,6 +373,7 @@ Third variant that can co-exist with Patterns A + B: **`execute-ability` fails o
 
 | Try | Method | Use for |
 |---|---|---|
+| 0 | **Client-side drop only** (the connector's tools vanished from the session, server healthy): speak JSON-RPC to the same endpoint with `curl` — `initialize` → capture `Mcp-Session-Id` → `tools/call` `mcp-adapter-execute-ability` — using the connector's own `Authorization` header from `~/.claude.json` (see [`../workflows/claude-mcp-connector-setup.md`](../workflows/claude-mcp-connector-setup.md) §"HTTP MCP transport requires `initialize` handshake") | Same abilities, no reconnect needed mid-task |
 | 1 | REST direct (App Password, super_admin or Editor) | `wp/v2/*` CRUD, `code-snippets/v1/*`, `menu-items/v1/*`, custom plugin REST namespaces |
 | 2 | cPanel Fileman UAPI + API2 (see [`deployment.md`](../references/deployment.md)) | mu-plugin deploy, file listing, delete/trash/move |
 | 3 | Direct database mutation via a token-guarded one-shot mu-plugin (see [`non-standard-stacks.md`](non-standard-stacks.md) §"One-shot mu-plugin pattern") | Elementor `Document::save()`, direct `update_option()`, transient purge |

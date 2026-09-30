@@ -255,6 +255,22 @@ Google PageSpeed Insights API quota-blocks aggressively when many pages are audi
 
 Never make up LCP / CLS / INP numbers. False confidence in CWV data misleads the client + costs credibility when they verify with real tools.
 
+## Phase 5 — Index-gap triage: diagnose before prescribing
+
+When the audit ends with "only N pages indexed", the tempting prescriptions (more internal links, more content, Indexing API pushes) are often wrong. Diagnose first — on one site this reversed the conclusion twice in the same day.
+
+1. **Sample URL Inspection per content type** (money pages, blog posts, archives, pagination) via the Search Console API — see [`ga4-admin-api.md`](ga4-admin-api.md) §"Same service account → Search Console API". Tabulate `coverageState` per type. The UI's headline "indexed" count can mislead: on that site 7 of 8 key service pages were indexed; the gap was blog posts.
+2. **Read the dominant state as the diagnosis**:
+   - `URL is unknown to Google` dominant → **discovery / crawl demand**, not quality. Look for crawl-budget sinks (a hack's spam-URL backlog still being recrawled as 404/410, faceted or parameter URLs, infinite calendars) and for weak discovery paths.
+   - `Crawled - currently not indexed` dominant → **quality / duplication**: thin or near-duplicate posts, mass AI-generated content, canonical conflicts.
+3. **Map inbound links from rendered HTML (including pagination pages) before prescribing links.** If the "unknown" posts are already linked from indexed pages with plain `<a href>` (no `nofollow`, present in server HTML), adding more internal links won't fix it — links aren't the bottleneck. On the site above, 0 of 83 posts were orphans, and a post *without* a link from its pillar was indexed while linked siblings were unknown.
+4. **Look for single points of failure in the discovery tree** — e.g. every category archive reachable only through one blog hub page that is itself "Discovered – currently not indexed", with archive pagination "unknown". Hygiene fix: expose the category archives site-wide (footer / menu). Expect it to help discovery, not to cure a quality or crawl-budget problem.
+5. **Don't prescribe the Indexing API** for normal pages — see [`ga4-admin-api.md`](ga4-admin-api.md) §"Indexing API — scope limitation".
+
+### Link-check nuance — 403 / 406 / 429 / 503 are usually bot-blocks, not dead links
+
+News sites, social networks and messaging apps answer automated HEAD/GET requests with 403 / 406 / 429 / 503 while serving browsers normally. Before unlinking an "external broken link", re-check it with a browser User-Agent (or open it). Only 404 / 410 (or a host that no longer resolves, or a marketplace listing that is gone) is dead. Also catch malformed links from bulk content (`http://https://…`) — they look external but are broken internal links.
+
 ## Deliverables
 
 Save all three to `<project>/audit/`:
@@ -277,3 +293,5 @@ Report format follows the `anthropic-skills/seo-google` skill template:
 - [`../references/schema-jsonld.md`](../references/schema-jsonld.md) — schema scoring reference
 - [`ga4-admin-api.md`](ga4-admin-api.md) — set up event tracking to enable "conversions per organic session" scoring in future audits
 - Insight source: weekly distillation 2026-06-18 (crawl-once + multi-agent + adversarial verify)
+- Insight source: weekly distillation 2026-09-30 (index-gap triage via URL Inspection sampling, link-map disproved the orphan hypothesis, single-point-of-failure discovery path, bot-block link statuses)
+- [`redirect-audit.md`](redirect-audit.md) — redirects that mask live posts are another cause of "published but never indexed"

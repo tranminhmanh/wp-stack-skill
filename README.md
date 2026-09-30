@@ -75,7 +75,7 @@ wp-stack/
 │   ├── astra-mobile-menu.md          ← 3-mode comparison + iOS bfcache fix + 6-layer defense
 │   ├── seo-checklist.md              ← Rank Math + Schema + OG image + duplicate-meta audit
 │   ├── performance.md                ← Speed optimization + cache invalidation
-│   ├── security.md                   ← Hardening checklist
+│   ├── security.md                   ← Hardening checklist + 2 hack-forensic ladders (rogue sitemap, hidden admin)
 │   ├── deployment.md                 ← Deploy workflow + hosting traps (cPanel / Imunify360 / cPanel error_log)
 │   ├── vietnamese.md                 ← Vietnamese-locale concerns (fonts, slugs, schema)
 │   ├── mcp-architecture.md           ← Multi-plugin MCP endpoint architecture + HTTP vs stdio
@@ -89,9 +89,11 @@ wp-stack/
 │   ├── code-snippets.md              ← Code Snippets plugin REST API workflow
 │   ├── gbp-setup.md                  ← Google Business Profile content policy + VN category gotchas
 │   ├── mu-plugin-patterns.md         ← Suppress upstream Closure / bridge / polyfill patterns
+│   ├── non-standard-stacks.md        ← Flatsome / WPBakery / Bricks / Divi / Gutenberg fallbacks
+│   ├── troubleshooting.md            ← PHP error_log location, opcache window, huge-log filtering
 │   └── pitfalls.md                   ← 50+ pitfalls with detection + fix
 │
-├── workflows/                        ← Step-by-step procedures (24 files)
+├── workflows/                        ← Step-by-step procedures (26 files)
 │   ├── new-site-setup.md             ← Set up a new site A → Z
 │   ├── add-cpt.md                    ← Create a Custom Post Type
 │   ├── theme-builder-loop.md         ← Build a Loop template
@@ -112,6 +114,11 @@ wp-stack/
 │   ├── claude-mcp-connector-setup.md ← `claude mcp add` CLI + HTTP vs stdio decision matrix
 │   ├── litespeed-cache-mgmt.md       ← LiteSpeed cache mgmt for REST + MCP automation
 │   ├── bulk-content-automation.md    ← Idempotent bulk content modification + master dataset
+│   ├── deploy-rankmath-mcp-wrapper.md ← 4 distribution paths for the Rank Math MCP wrapper
+│   ├── full-site-seo-audit.md        ← Crawl-once + multi-agent /60 audit + index-gap triage
+│   ├── ga4-admin-api.md              ← GA4 Admin + Search Console APIs via service account
+│   ├── woocommerce-ga4-ecommerce.md  ← Ecommerce event audit + server-side purchase (Measurement Protocol)
+│   ├── redirect-audit.md             ← Find redirect rules that mask live content
 │   └── session-distillation.md       ← Meta workflow for self-upgrading the skill
 │
 └── templates/                        ← Reusable assets

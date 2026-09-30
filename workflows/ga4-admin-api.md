@@ -108,7 +108,7 @@ echo "$ACCESS_TOKEN"
 
 Token TTL is 1 hour. Cache in a var for the duration of your script; re-run when it expires.
 
-**No PyJWT required** — this is pure bash + `openssl dgst -sha256 -sign` + `openssl base64 -A`. Same pattern works for Indexing API, Search Console API, any Google API that accepts JWT bearer auth.
+**No PyJWT required** — this is pure bash + `openssl dgst -sha256 -sign` + `openssl base64 -A`. Same pattern works for Indexing API, Search Console API, any Google API that accepts JWT bearer auth. (Auth pattern only — read §"Indexing API — scope limitation" before using the Indexing API for anything.)
 
 ## Ops — custom dimensions + key events
 
@@ -212,9 +212,70 @@ When calls fail, distinguish:
 
 Getting a token successfully = layer 1 OK (API enabled + SA valid). Getting 403 on property call = layer 2 fail (SA not added to GA4 property).
 
+## Same service account → Search Console API (index diagnosis)
+
+The JWT flow above works for Search Console with scope `https://www.googleapis.com/auth/webmasters.readonly` (or `webmasters` for sitemap submit). Add the service-account email as a user of the GSC property (Settings → Users and permissions) — *Full* is enough for these read APIs; only the Indexing API needs *Owner*. Property IDs are `sc-domain:example.com` (domain property) or `https://example.com/` (URL-prefix) — URL-encode them in paths.
+
+### URL Inspection — the fastest way to tell *why* a URL is not indexed
+
+```bash
+curl -s -X POST "https://searchconsole.googleapis.com/v1/urlInspection/index:inspect" \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"inspectionUrl":"https://example.com/some-post/","siteUrl":"sc-domain:example.com"}' \
+  | jq '.inspectionResult.indexStatusResult | {coverageState, verdict, lastCrawlTime, googleCanonical, sitemap, referringUrls}'
+```
+
+Read `coverageState` as a diagnosis, not just a status:
+
+| `coverageState` | Meaning | Where to look |
+|---|---|---|
+| `Submitted and indexed` | Fine | — |
+| `URL is unknown to Google` | Never discovered / never crawled — a **discovery or crawl-demand** problem, not a quality verdict | Sitemap freshness, crawl budget sinks (spam 404/410 backlog after a hack, faceted URLs), link paths |
+| `Discovered - currently not indexed` | Known but not yet crawled — crawl budget / demand | Same as above, plus server speed |
+| `Crawled - currently not indexed` | Google fetched it and chose not to index — **quality / duplication / priority** | Content depth, duplicates, canonical signals |
+
+Sample 10–20 URLs **per content type** (money pages, blog posts, archives) before concluding anything — one site that "had only 23 indexed pages" turned out to have 7 of 8 key service pages indexed, with the gap concentrated in blog posts that Google had never seen. That changes the fix completely (discovery, not trust or quality). The API is quota-limited per property per day — sample, don't sweep. The "Request indexing" button has **no API**; it stays a manual GSC UI action.
+
+### Search Analytics + Sitemaps
+
+```bash
+SITE_ENC=$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1], safe=""))' "sc-domain:example.com")
+curl -s -X POST "https://searchconsole.googleapis.com/webmasters/v3/sites/$SITE_ENC/searchAnalytics/query" \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"startDate":"2026-06-01","endDate":"2026-06-28","dimensions":["page"],"rowLimit":1000}'
+
+curl -s "https://searchconsole.googleapis.com/webmasters/v3/sites/$SITE_ENC/sitemaps" -H "Authorization: Bearer $TOKEN"
+```
+
+⚠️ In the Sitemaps response, `contents[].indexed` is a **deprecated field** — it comes back 0 or missing no matter how many URLs are indexed. Do not read it as "0 pages indexed". Use `submitted`, `lastDownloaded`, `errors`, `warnings` there, and URL Inspection / the Pages report for index state.
+
+## Indexing API — scope limitation (read before using it)
+
+Google's Indexing API is supported **only** for pages carrying `JobPosting` or `BroadcastEvent` (livestream `VideoObject`) structured data. For any other URL it still answers `200 OK` and consumes quota — which makes it look like it worked — but it is not a supported way to get normal pages (blog posts, service pages, products) crawled or indexed. Two sites in this portfolio pushed batches of ordinary URLs through it after a cleanup: one saw no attributable effect, the other saw crawls happen but no indexing it could credit to the API. It may nudge a crawl in practice; it guarantees nothing, and Google can stop honoring out-of-scope calls at any time.
+
+For normal pages: fresh sitemap + internal links from indexed pages + URL Inspection → *Request indexing* in the GSC UI for the few URLs that matter most. Where the Indexing API *is* appropriate, the caller must be a verified **Owner** of the property (a delegated owner is fine) — *Full user* is rejected.
+
+## OAuth user flow — when a service account can't be added
+
+Some owners won't add a service-account email to their properties. Alternative: one installed-app OAuth flow as a person who already has access, requesting all scopes at once (`analytics.edit`, `analytics.readonly`, `webmasters`, `indexing` as needed), caching the refresh token locally (never in git), and calling the REST endpoints with that token. Gotchas that cost time:
+
+- **API usage is attributed to the OAuth client's project *number*** — the numeric prefix of the `client_id`. Enable each API on *that* project. A project has both an ID string and a number; they are the same project, so notes that pair a number with a different-looking ID cause needless confusion. `SERVICE_DISABLED` errors name the project number — trust that.
+- **Consent screen in "Testing" mode** → the authorizing Google account must be listed as a *test user*, or the flow fails before any scope is granted.
+- **Owner-only APIs** (Indexing) → the authorizing account must be an Owner / delegated owner of the GSC property, not a Full user.
+
+## Admin API gaps — do these in the UI
+
+| Task | API status | Where |
+|---|---|---|
+| Internal-traffic rule + Data filter activation | No data-filter resource in the Admin API versions tried (404) | GA4 Admin → Data streams → Configure tag settings → Define internal traffic; Admin → Data filters → set *Active* |
+| Enhanced Measurement toggles | `enhancedMeasurementSettings` on the `v1alpha` surface | See [`woocommerce-ga4-ecommerce.md`](woocommerce-ga4-ecommerce.md) Step 5 |
+| Measurement Protocol secrets | `v1beta` `…/dataStreams/{id}/measurementProtocolSecrets` | See [`woocommerce-ga4-ecommerce.md`](woocommerce-ga4-ecommerce.md) Step 4a |
+
 ## Cross-references
 
 - [`litespeed-cache-mgmt.md`](litespeed-cache-mgmt.md) — JS Delay traps that prevent events from firing at all (fix client-side FIRST, before adding GA4 config)
 - [`../references/pitfalls.md`](../references/pitfalls.md) — Site Kit REST scope limitations
 - [Google Analytics Admin API v1beta docs](https://developers.google.com/analytics/devguides/config/admin/v1) — canonical reference
 - Insight source: weekly distillation 2026-07-21 (GA4 Admin API via SA + openssl JWT, Site Kit readonly cage, key event pollution audit)
+- Insight source: weekly distillation 2026-09-30 (Search Console URL Inspection triage, Sitemaps `indexed` deprecated, Indexing API scope limitation confirmed on 2 sites, OAuth project-number + test-user + Owner gotchas, Admin API gaps)
+- [`woocommerce-ga4-ecommerce.md`](woocommerce-ga4-ecommerce.md) — ecommerce events, server-side `purchase`, Enhanced Measurement form junk

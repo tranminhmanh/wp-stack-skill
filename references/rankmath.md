@@ -115,6 +115,8 @@ Safer khi:
 
 Verify per plugin trước khi rely on pattern.
 
+⚠️ **Mặt trái của cùng hành vi**: rule redirect cũ có source trùng permalink của bài đang publish sẽ **che bài đó** (loop, 404, hoặc 200 ở trang hub — nhóm cuối khó thấy nhất) → bài rớt index. Audit toàn bộ redirect theo tiêu chí "source có phải permalink bài đang sống?": [`workflows/redirect-audit.md`](../workflows/redirect-audit.md).
+
 ## 3. `rank_math_*` post meta KHÔNG expose qua REST mặc định
 
 Rank Math không register `show_in_rest=true` cho meta keys:
@@ -188,11 +190,34 @@ When building NEW wrapper plugin, prefer semantic keys cho clarity nhưng docume
 
 Sau `update-meta` write thành công, subsequent GET `get-meta` có thể trả STALE value. Xem [`workflows/litespeed-cache-mgmt.md`](../workflows/litespeed-cache-mgmt.md) section "WP-Abilities REST stale-read fix" — wrapper plugin phải emit no-cache headers qua `rest_post_dispatch` filter + `litespeed_control_set_nocache` action.
 
-## 6. Sitemap regen trigger
+## 6. Sitemap regen trigger — 3 cache layers + "index 200 ≠ children listed"
 
 Rank Math sitemap (XML) cached at file system level. Update post → sitemap không auto-regen ngay. Trigger:
 - wp-admin → Rank Math → Sitemap Settings → Save (forces regen)
-- Programmatic: `do_action( 'rank_math/sitemap/hit_index' );` hoặc delete cache transient `rank_math_sitemap_*`
+- ~~Programmatic: `do_action( 'rank_math/sitemap/hit_index' );` hoặc delete cache transient `rank_math_sitemap_*`~~ — **incomplete (corrected v0.12.0)**: deleting options/transients alone did NOT refresh the sitemap on 3 separate sites (one Polylang build on Docker, two shared-host sites). Rank Math also serves a **disk cache**.
+
+### 3 layers — clear all of them
+
+1. Options / transients: `rank_math_sitemap%`, `_transient_rank_math%`
+2. `wp-content/uploads/sitemap-cache/*` (older versions)
+3. **`wp-content/uploads/rank-math/*.xml`** ← the easily-missed one that kept serving stale XML
+
+Plus `\RankMath\Sitemap\Cache::invalidate_storage()` when the class exists. Full procedure (and the `rank_math_canonical_url ≠ get_permalink()` skip rule): [`workflows/multilingual-polylang.md`](../workflows/multilingual-polylang.md) §"Polylang Free + Rank Math sitemap incomplete".
+
+No SSH / no DB access: layer 3 via cPanel Fileman API2 `fileop op=unlink` ([`deployment.md`](deployment.md) §"Delete / trash / move via API2"), or a one-shot MU-plugin that `glob()`s and unlinks the XML files, or the wp-admin Sitemap settings save / "refresh cache" action.
+
+### Detection — HTTP 200 on the index proves nothing
+
+After adding a post type or taxonomy (e.g. the first batch of blog posts), compare the index's `<loc>` list with the child sitemaps that actually respond:
+
+```bash
+curl -s "$SITE/sitemap_index.xml" | grep -o '<loc>[^<]*</loc>'
+for s in post page category product; do
+  printf '%s: %s\n' "$s" "$(curl -s "$SITE/$s-sitemap.xml" | grep -c '<url>')"
+done
+```
+
+Real case: the index listed 3 children with a `lastmod` older than the blog launch, while `post-sitemap.xml` (25 URLs) and `category-sitemap.xml` (4 URLs) answered 200 correctly → 24 new posts were never submitted, and every "status code" smoke test was green. Rule out page cache first (`x-litespeed-cache`, `?nocache=`), then flush Rank Math's own layers and resubmit the sitemap in GSC. Verify what Google reads, not what WordPress believes it generated.
 
 ## 7. Schema Builder 2.x — `rank_math_schema_{Type}` format (no Schema Pro needed)
 
@@ -571,6 +596,38 @@ Whenever a write ability returns success but you can't confirm the effect visibl
 
 Never assume "success" means "your data landed" until you've verified independently.
 
+## 14. Pages default Schema Type = Article → a junk `Article` node on every page
+
+**Symptom**: every static page (About, Services, Contact — often the homepage too) carries an `Article` / `BlogPosting` node in Rank Math's `@graph`, `headline` = page title. Service pages "become" articles, and if you emit your own `Service` / `AboutPage` / `Article` nodes you now have competing types. Seen on 2 sites (a clinic site and an e-commerce site).
+
+**Root cause**: Titles & Meta → Pages → *Schema Type* defaults to Article on many installs — stored as `pt_page_default_rich_snippet = 'article'` in `rank-math-options-titles`, applied to every page without its own schema.
+
+**Fix A — turn the default off** (preferred):
+
+- Rank Math → Titles & Meta → Pages → Schema Type → *None*; or
+- `rankmath-mcp/update-titles-option {"key": "pt_page_default_rich_snippet", "value": "off"}` (wrapper ability, returns before/after — see §12).
+
+Leave `pt_post_default_rich_snippet` alone — Article/BlogPosting is correct for blog posts.
+
+**Fix B — drop nodes by `@type`** when your own MU-plugin already emits richer Article / Organization nodes and Rank Math's copies are duplicates:
+
+```php
+add_filter( 'rank_math/json_ld', function ( $data ) {
+    if ( ! is_array( $data ) ) return $data;
+    foreach ( $data as $key => $piece ) {
+        $types = is_array( $piece ) ? (array) ( $piece['@type'] ?? [] ) : [];
+        if ( array_intersect( $types, [ 'Article', 'BlogPosting', 'NewsArticle' ] ) ) {
+            unset( $data[ $key ] );   // your emitter is the single source for these types
+        }
+    }
+    return $data;
+}, 99 );
+```
+
+Only do B when another emitter really covers posts — otherwise posts lose their Article markup.
+
+**Verify**: `curl -s "$SITE/about/" | grep -o '"@type":"[A-Za-z]*"' | sort | uniq -c` → no Article on pages; a blog post still shows exactly one.
+
 ## Liên quan
 
 - [`wp-abilities.md`](wp-abilities.md) — REST direct execution pattern
@@ -578,4 +635,4 @@ Never assume "success" means "your data landed" until you've verified independen
 - [`workflows/litespeed-cache-mgmt.md`](../workflows/litespeed-cache-mgmt.md) — WP-Abilities REST cache bust
 - [`workflows/build-mcp-wrapper-plugin.md`](../workflows/build-mcp-wrapper-plugin.md) — wrap Rank Math REST as MCP abilities
 - [`mu-plugin-patterns.md`](mu-plugin-patterns.md) — bridge/polyfill/force-option patterns for MU-plugins
-- Insight sources: weekly distillation 2026-05-13 (lazy compute, redirect override, response keys); 2026-05-23 (taxonomy option escape hatch); 2026-06-18 (update-meta silent drop)
+- Insight sources: weekly distillation 2026-05-13 (lazy compute, redirect override, response keys); 2026-05-23 (taxonomy option escape hatch); 2026-06-18 (update-meta silent drop); 2026-09-30 (sitemap 3-layer cache correction + index-vs-children detection, Pages default Article schema, redirect masking → `workflows/redirect-audit.md`)

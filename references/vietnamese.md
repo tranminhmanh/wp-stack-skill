@@ -11,6 +11,21 @@ SHOW VARIABLES LIKE 'character_set%';
 SHOW VARIABLES LIKE 'collation%';
 ```
 
+## PHP extensions — `mbstring` must be enabled
+
+Vietnamese text is multibyte UTF-8. Without the `mbstring` extension, `mb_*` calls fall back or fail and byte-based `strlen` / `substr` cut characters in half — broken excerpts and meta descriptions, wrong title-length counts, SEO-plugin keyword matching and scoring that misbehave on diacritics, and garbled strings in generated files. Some shared-hosting PHP selectors leave it **off** (seen on a cPanel / CloudLinux host running PHP 8.3 chosen in the PHP Selector).
+
+```bash
+# With a shell
+php -m | grep -i mbstring
+# Without SSH
+#   wp-admin → Tools → Site Health → Info → Server → PHP extensions
+#   or a guarded one-line probe (snippet / one-shot MU-plugin):
+#   echo extension_loaded('mbstring') ? 'mbstring on' : 'mbstring OFF';
+```
+
+Fix: cPanel → *Select PHP Version* (PHP Selector) → Extensions → tick `mbstring` → save. Re-check after every PHP version switch — the selector keeps a separate extension list per PHP version.
+
 ## Fonts with Vietnamese subset
 
 Tested OK:
@@ -58,7 +73,7 @@ Length: 150–160 chars (Vietnamese is ~30% longer than English due to diacritic
 ```json
 {
   "@type": "LocalBusiness",
-  "name": "Bánh Mì Má Hải",
+  "name": "Bánh Mì Hoa Mai",
   "address": {
     "streetAddress": "123 Lê Lợi",
     "addressLocality": "Quận 1",

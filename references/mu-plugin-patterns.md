@@ -167,6 +167,44 @@ add_filter( 'pre_option_some_option_name', function () {
 
 `pre_option_<name>` short-circuits the option lookup — useful when the wp-admin UI keeps re-enabling a setting (e.g. WC Coming Soon, see [`pitfalls.md`](pitfalls.md)).
 
+## Pattern 6 — One-shot data fix: run-once guard + content-match + backup
+
+Use when an API can't write something (widget text, a plugin option, a serialized setting) but PHP inside WordPress can. The file runs on the next request, changes the data once, and becomes inert. Three guards make it safe to leave deployed until you delete it:
+
+```php
+<?php
+/**
+ * Plugin Name: acme-fix-demo-widget (one-shot)
+ * Description: Replace leftover theme-demo text in block widget #14. Safe to delete after it has run.
+ */
+add_action( 'init', function () {
+    $flag = 'acme_fix_demo_widget_v1';                 // 1. run-once guard (bump _v2 to re-run after edits)
+    if ( get_option( $flag ) ) return;
+
+    $widgets = get_option( 'widget_block', [] );
+    $current = $widgets[14]['content'] ?? '';
+
+    // 2. content-match guard — only overwrite if the OLD text is still there.
+    //    If someone already fixed it by hand, leave their version alone.
+    if ( false === strpos( $current, 'demo-marker-text' ) ) {
+        update_option( $flag, 'skipped: no match', false );
+        return;
+    }
+
+    update_option( 'acme_widget_block_backup', $widgets, false );   // 3. backup before writing
+    $widgets[14]['content'] = '<!-- wp:paragraph --><p>New text.</p><!-- /wp:paragraph -->';
+    update_option( 'widget_block', $widgets );
+
+    update_option( $flag, gmdate( 'c' ), false );
+    if ( defined( 'LSCWP_V' ) ) do_action( 'litespeed_purge_all' );  // make the change visible on cached pages
+}, 20 );
+```
+
+- The flag option is the difference between "one-shot" and "runs forever". A file *named* one-shot without it re-applies itself on every request — see [`pitfalls.md`](pitfalls.md) §"Self-reverting change" (a cleanup file kept deactivating a plugin the owner had just re-enabled).
+- The content-match guard makes the fix idempotent and polite: it never clobbers a newer manual edit.
+- Delete the file once the flag is set — the data lives in the DB now. Keep the backup option until the owner confirms the result.
+- Same shape works for any option / meta / serialized setting: read → match → back up → write → flag → purge.
+
 ## File naming + organization
 
 ```
@@ -191,6 +229,10 @@ Conventions:
 ❌ **Putting site-specific business logic in mu-plugins** — mu-plugins should be infrastructure / compatibility / patches. Business logic belongs in a child theme or a custom plugin.
 
 ❌ **Adding `*.php` files to mu-plugins root that you forget about** — every file auto-loads. Six months later when something breaks, you've lost track of why a closure on `init` is firing. Document each file with a comment header explaining what it does + why.
+
+❌ **"One-shot" by filename only** — a mu-plugin runs on every request until it is deleted. Without a stored run-once flag, a "one-shot cleanup" is a permanent per-request writer that will fight any later change (Pattern 6).
+
+❌ **Removing a block from a big JS-injection mu-plugin by matching only the block's text** — later blocks in the same file often anchor on variables the removed block declared (`map.parentNode.insertBefore(faq, map.nextSibling)`). Real case: the map block was removed cleanly (dry-run matched once, page still HTTP 200) and the FAQ section below it silently vanished with `ReferenceError: map is not defined`. Before deleting, grep the whole file for every variable the block declares; after deleting, check the browser console and count the other sections on the page. Open a fresh tab to confirm — the console keeps errors from the previous load.
 
 ❌ **Using a mu-plugin when a filter would work** — filters are more discoverable + can be removed with `remove_filter()`. Only reach for mu-plugin patterns when filters fail (e.g. Closure suppression, force-override against a stubborn upstream).
 
@@ -251,6 +293,24 @@ curl -s "$SITE/" | grep -cE 'Fatal error|Parse error|Warning:.*mu-plugins'
 curl -s "$SITE/" | jq '.["@graph"][] | select(."@id" | endswith("#organization")) | .address'
 # → expected enriched value = mu-plugin ran successfully
 ```
+
+### Before step 1 — scan generated code for invisible / private-use characters
+
+`php -l` checks syntax only. A stray Private Use Area code point that slips into generated PHP (seen: `U+100000` inside a heredoc) produces a **runtime** fatal (`Undefined constant …`) on every request — lint passes, the site dies. Scan all three PUA ranges, not just the BMP one, then look at the token stream:
+
+```bash
+python3 - "$FILE" <<'PYX'
+import sys, unicodedata
+t = open(sys.argv[1], encoding='utf-8').read()
+bad = [(i, hex(ord(c))) for i, c in enumerate(t)
+       if 0xE000 <= ord(c) <= 0xF8FF or 0xF0000 <= ord(c) <= 0xFFFFD or 0x100000 <= ord(c) <= 0x10FFFD
+       or unicodedata.category(c) in ('Cf', 'Co', 'Cn')]
+print(bad or 'clean')
+PYX
+php -r 'foreach (token_get_all(file_get_contents($argv[1])) as $x) { if (is_array($x) && $x[0] === T_STRING && preg_match("/[\x80-\xff]/", $x[1])) { echo "line $x[2]: $x[1]\n"; } }' "$FILE"
+```
+
+`Cf` also catches zero-width spaces / BOMs pasted from chat or docs — keep Vietnamese letters (category `Ll`/`Lu`/`Mn`) out of the reject list.
 
 ### Why SIZE-MATCH is the transcription proof
 

@@ -40,6 +40,12 @@ Cuối session, ghi nhanh 5-15 thứ học được. Không quan tâm format. V�
 - WebFetch không parse JSON-LD đầy đủ → đừng tin
 ```
 
+**Nguồn + mốc cắt (bài học Round 13)**:
+
+- Mốc = **thời điểm commit** của vòng distill trước (`git log -1 --format=%ad --date=iso`), KHÔNG phải ngày. Round 12 commit 17:06 — 2 insight ghi lúc 17:10 cùng ngày bị sót tới vòng sau.
+- Quét đủ 3 nguồn: `~/.claude/projects/*/memory/*.md` (sort theo mtime — `find … -newer`), `insights.md` ở root từng project WP, và **session log trong project `CLAUDE.md`** — nhiều insight chỉ được ghi ở session log, không vào insights.md.
+- Project không phải WordPress (dashboard, CRM, app) → ghi "ngoài phạm vi skill" trong report, không distill vào wp-stack.
+
 ### 2. Phân loại theo layer
 
 Mỗi insight → đánh dấu skill / project / CLAUDE.md:
@@ -116,11 +122,15 @@ grep -nrE "https?://[a-z0-9.-]+\.(com|vn|net|org|id\.vn|io)" \
   references/ workflows/ templates/ SKILL.md CHANGELOG.md \
   | grep -vE "$ALLOW"
 
-# 2. Brand acronym / customer name — populate from your real project list,
-#    then run before each push. Example pattern (replace with your slugs):
-LEAK='\b(acmecorp|client-a|client-b)\b'   # ← edit per your portfolio
-grep -nriE "$LEAK" references/ workflows/ CHANGELOG.md SKILL.md
-# Append new acronym/slug whenever you distill from a new project.
+# 2. Brand / customer / person / ID terms — the REAL list lives in a local,
+#    gitignored file, one extended-regex per line:  private/brand-leak-blocklist.txt
+#    (/private/ is in .gitignore — the list itself must never be committed).
+LC_ALL=en_US.UTF-8 grep -nriEf private/brand-leak-blocklist.txt \
+  references/ workflows/ templates/ SKILL.md CHANGELOG.md README.md
+# Add to the list whenever you distill from a new project: domain + slug, brand
+# name WITH and WITHOUT diacritics, people's names, hospital/university names,
+# hosting usernames, GA4/Ads/Merchant IDs, phone numbers, street names, and the
+# site-specific prefixes of its MU-plugins / functions (e.g. `<abbr>-`, `<abbr>_`).
 
 # 3. Connector / project slug must be neutral
 grep -nrE "[a-z]+-(vn|com|net)-(global|elementor)" references/ workflows/ \
@@ -132,6 +142,10 @@ grep -nrE "[a-z]+-(vn|com|net)-(global|elementor)" references/ workflows/ \
 grep -nrE "<list-of-team-first-names>" workflows/ references/
 
 # Expect: empty output for all 4 commands.
+# Run the blocklist grep ONCE AT THE START of the round too (before editing):
+# the baseline separates leaks you are about to add from leaks already published
+# by earlier rounds. Scrub both in this round's commit; earlier pushes keep the
+# old strings in git history (see Recovery below — no force-push without an explicit yes).
 # Self-reference exception: the grep pattern itself (this section) will
 # match its own regex strings — that is OK, scrub does not need to
 # rewrite the workflow that documents the scrub.
@@ -173,6 +187,10 @@ Bump version theo semver:
 - **PATCH** (0.1.0 → 0.1.1): typo, formatting, link fix
 - **MINOR** (0.1.0 → 0.2.0): file mới, section mới, pattern mới
 - **MAJOR** (0.x.x → 1.0.0): breaking change ở structure (đổi tên file lớn, refactor)
+
+### 7. Đánh dấu nguồn sau khi promote
+
+Sau khi commit, quay lại file nguồn và đánh dấu từng insight đã lên skill — trong index của `insights.md` đổi status thành `**PROMOTED-TO-SKILL** vX.Y.Z ([file](…) §section)`; với file insights dạng nhật ký (không có cột status) thì thêm một dòng `→ wp-stack vX.Y.Z: <file>` cuối mục. Bỏ bước này thì vòng sau không phân biệt được cái nào đã distill: thực tế 2 vòng liền quên đánh dấu, 20 insight đã nằm trong skill vẫn hiện `CANDIDATE`, và 1 insight thật sự chưa lên skill (cách tạo header auth cPanel) bị lẫn trong đó suốt 4 tháng.
 
 ## Rút insight từ project memory ngược về skill
 
